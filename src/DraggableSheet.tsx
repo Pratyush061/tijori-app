@@ -15,9 +15,9 @@ import {
 import { colors, space } from './theme';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const FULL_AT = SCREEN_HEIGHT * 0.1;
-const REST_TRANSLATE = SCREEN_HEIGHT * 0.15;
-const DISMISS_AT = SCREEN_HEIGHT * 0.6;
+const FULL_AT = SCREEN_HEIGHT * 0.06;
+const REST_TRANSLATE = SCREEN_HEIGHT * 0.28;
+const DISMISS_AT = SCREEN_HEIGHT * 0.75;
 
 type Props = {
   visible: boolean;
@@ -80,7 +80,7 @@ export function DraggableSheet({
         } else if (y >= DISMISS_AT) {
           settle(SCREEN_HEIGHT, onClose);
         } else {
-          settle(REST_TRANSLATE);
+          settle(y);
         }
       },
     }),
