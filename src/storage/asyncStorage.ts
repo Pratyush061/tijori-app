@@ -1,9 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { PasswordEntry, Birthday } from '../data';
-import type { PasswordStorage, BirthdayStorage } from './index';
+import type { PasswordEntry, Birthday, NoteEntry, CardEntry } from '../data';
+import type { PasswordStorage, BirthdayStorage, NoteStorage, CardStorage } from './index';
 
 const STORAGE_KEY = '@tijori_passwords';
 const BIRTHDAY_STORAGE_KEY = '@tijori_birthdays';
+const NOTE_STORAGE_KEY = '@tijori_notes';
+const CARD_STORAGE_KEY = '@tijori_cards';
 
 export class AsyncStoragePasswordStorage implements PasswordStorage {
   async list(): Promise<PasswordEntry[]> {
@@ -100,3 +102,99 @@ export class AsyncStorageBirthdayStorage implements BirthdayStorage {
 }
 
 export const birthdayStorage = new AsyncStorageBirthdayStorage();
+
+export class AsyncStorageNoteStorage implements NoteStorage {
+  async list(): Promise<NoteEntry[]> {
+    try {
+      const json = await AsyncStorage.getItem(NOTE_STORAGE_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch (e) {
+      console.error('Failed to load notes', e);
+      return [];
+    }
+  }
+
+  async get(id: string): Promise<NoteEntry | null> {
+    const list = await this.list();
+    return list.find((n) => n.id === id) || null;
+  }
+
+  async create(entry: Omit<NoteEntry, 'id'>): Promise<NoteEntry> {
+    const list = await this.list();
+    const newEntry: NoteEntry = {
+      ...entry,
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+    };
+    list.push(newEntry);
+    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(list));
+    return newEntry;
+  }
+
+  async update(id: string, updates: Partial<NoteEntry>): Promise<NoteEntry> {
+    const list = await this.list();
+    const index = list.findIndex((n) => n.id === id);
+    if (index === -1) {
+      throw new Error(`Note entry with id ${id} not found`);
+    }
+    const updatedEntry = { ...list[index], ...updates };
+    list[index] = updatedEntry;
+    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(list));
+    return updatedEntry;
+  }
+
+  async delete(id: string): Promise<void> {
+    const list = await this.list();
+    const filteredList = list.filter((n) => n.id !== id);
+    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(filteredList));
+  }
+}
+
+export const noteStorage = new AsyncStorageNoteStorage();
+
+export class AsyncStorageCardStorage implements CardStorage {
+  async list(): Promise<CardEntry[]> {
+    try {
+      const json = await AsyncStorage.getItem(CARD_STORAGE_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch (e) {
+      console.error('Failed to load cards', e);
+      return [];
+    }
+  }
+
+  async get(id: string): Promise<CardEntry | null> {
+    const list = await this.list();
+    return list.find((c) => c.id === id) || null;
+  }
+
+  async create(entry: Omit<CardEntry, 'id'>): Promise<CardEntry> {
+    const list = await this.list();
+    const newEntry: CardEntry = {
+      ...entry,
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+    };
+    list.push(newEntry);
+    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(list));
+    return newEntry;
+  }
+
+  async update(id: string, updates: Partial<CardEntry>): Promise<CardEntry> {
+    const list = await this.list();
+    const index = list.findIndex((c) => c.id === id);
+    if (index === -1) {
+      throw new Error(`Card entry with id ${id} not found`);
+    }
+    const updatedEntry = { ...list[index], ...updates };
+    list[index] = updatedEntry;
+    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(list));
+    return updatedEntry;
+  }
+
+  async delete(id: string): Promise<void> {
+    const list = await this.list();
+    const filteredList = list.filter((c) => c.id !== id);
+    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(filteredList));
+  }
+}
+
+export const cardStorage = new AsyncStorageCardStorage();

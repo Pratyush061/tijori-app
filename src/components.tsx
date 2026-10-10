@@ -236,12 +236,13 @@ export function Chevron() {
 
 /* --------------------------------------------------------------- tab bar */
 
-export type TabKey = 'vault' | 'passwords' | 'birthdays' | 'settings';
+export type TabKey = 'vault' | 'passwords' | 'birthdays' | 'notes' | 'settings';
 
 const TABS: { key: TabKey; label: string; icon: IconName }[] = [
   { key: 'vault', label: 'Vault', icon: 'vault' },
   { key: 'passwords', label: 'Passwords', icon: 'key' },
   { key: 'birthdays', label: 'Birthdays', icon: 'cake' },
+  { key: 'notes', label: 'Notes', icon: 'note' },
   { key: 'settings', label: 'Settings', icon: 'gear' },
 ];
 

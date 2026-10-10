@@ -17,6 +17,7 @@ import {
   VaultScreen,
   serifFont,
 } from './src/screens';
+import { NotesScreen } from './src/NotesScreen';
 import { colors, space } from './src/theme';
 
 const TOP_INSET =
@@ -44,6 +45,8 @@ function NavBar({ tab }: { tab: TabKey }) {
       ? 'Passwords'
       : tab === 'birthdays'
       ? 'Birthdays'
+      : tab === 'notes'
+      ? 'Notes'
       : 'Settings';
   const showPlus = tab !== 'settings';
 
@@ -64,6 +67,8 @@ function CurrentScreen({ tab }: { tab: TabKey }) {
       return <PasswordsScreen />;
     case 'birthdays':
       return <BirthdaysScreen />;
+    case 'notes':
+      return <NotesScreen />;
     case 'settings':
       return <SettingsScreen />;
     case 'vault':
@@ -72,22 +77,33 @@ function CurrentScreen({ tab }: { tab: TabKey }) {
   }
 }
 
+import { CardsScreen } from './src/CardsScreen';
+
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [tab, setTab] = useState<TabKey>('vault');
+  const [showCards, setShowCards] = useState(false);
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.inset} />
       {unlocked ? (
-        <>
-          <NavBar tab={tab} />
-          <View style={styles.content}>
-            <CurrentScreen tab={tab} />
-          </View>
-          <TabBar active={tab} onChange={setTab} />
-        </>
+        showCards ? (
+          <CardsScreen onBack={() => setShowCards(false)} />
+        ) : (
+          <>
+            <NavBar tab={tab} />
+            <View style={styles.content}>
+              {tab === 'vault' ? (
+                <VaultScreen onOpenCards={() => setShowCards(true)} onTabSelect={setTab} />
+              ) : (
+                <CurrentScreen tab={tab} />
+              )}
+            </View>
+            <TabBar active={tab} onChange={setTab} />
+          </>
+        )
       ) : (
         <LockScreen onUnlock={() => setUnlocked(true)} />
       )}
