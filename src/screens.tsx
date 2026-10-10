@@ -22,7 +22,7 @@ import {
 import type { IconName } from './components';
 import { birthdays, passwords, getDaysAway, formatBirthdayDate } from './data';
 import type { PasswordEntry, Birthday } from './data';
-import { passwordStorage, birthdayStorage, noteStorage, cardStorage } from './storage/asyncStorage';
+import { passwordStorage, birthdayStorage, noteStorage, cardStorage, documentStorage } from './storage/asyncStorage';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
@@ -62,6 +62,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
 
 type VaultScreenProps = {
   onOpenCards?: () => void;
+  onOpenDocuments?: () => void;
   onTabSelect?: (tab: any) => void;
 };
 
@@ -74,7 +75,7 @@ type RecentItem = {
   ts: number;
 };
 
-export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
+export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: VaultScreenProps) {
   const [stats, setStats] = React.useState({
     totalItems: 0,
     upcomingBdays: 0,
@@ -86,24 +87,26 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
     birthdays: 0,
     notes: 0,
     cards: 0,
+    documents: 0,
   });
 
   const [recents, setRecents] = React.useState<RecentItem[]>([]);
 
   React.useEffect(() => {
     const load = async () => {
-      const [ps, bs, ns, cs] = await Promise.all([
+      const [ps, bs, ns, cs, ds] = await Promise.all([
         passwordStorage.list(),
         birthdayStorage.list(),
         noteStorage.list(),
         cardStorage.list(),
+        documentStorage.list(),
       ]);
 
       const upcoming = bs.filter(b => getDaysAway(b.date) <= 30).length;
       const alerts = ps.filter(p => !p.password || p.password.trim() === '').length;
 
       setStats({
-        totalItems: ps.length + bs.length + ns.length + cs.length,
+        totalItems: ps.length + bs.length + ns.length + cs.length + ds.length,
         upcomingBdays: upcoming,
         alerts: alerts,
       });
@@ -113,6 +116,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         birthdays: bs.length,
         notes: ns.length,
         cards: cs.length,
+        documents: ds.length,
       });
 
       const extractTs = (id: string) => {
@@ -125,6 +129,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         ...bs.map(b => ({ id: b.id, title: b.name, subtitle: formatBirthdayDate(b.date), initial: b.initial, color: b.color, ts: extractTs(b.id) })),
         ...ns.map(n => ({ id: n.id, title: n.title, subtitle: 'Note', initial: n.initial, color: n.color, ts: extractTs(n.id) })),
         ...cs.map(c => ({ id: c.id, title: c.name, subtitle: `•••• ${c.last4}`, initial: c.initial, color: c.color, ts: extractTs(c.id) })),
+        ...ds.map(d => ({ id: d.id, title: d.title, subtitle: d.type, initial: d.initial, color: d.color, ts: extractTs(d.id) })),
       ];
 
       allItems.sort((a, b) => b.ts - a.ts);
@@ -139,6 +144,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
     { label: 'Birthdays', count: `${catCounts.birthdays} items`, icon: 'cake' as IconName, color: colors.pink },
     { label: 'Notes', count: `${catCounts.notes} items`, icon: 'note' as IconName, color: colors.orange },
     { label: 'Cards', count: `${catCounts.cards} items`, icon: 'card' as IconName, color: colors.green },
+    { label: 'Documents', count: `${catCounts.documents} items`, icon: 'document' as IconName, color: colors.indigo },
   ];
 
   return (
@@ -188,6 +194,8 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
             onPress={() => {
               if (c.label === 'Cards') {
                 onOpenCards?.();
+              } else if (c.label === 'Documents') {
+                onOpenDocuments?.();
               } else {
                 onTabSelect?.(c.label.toLowerCase());
               }
