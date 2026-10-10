@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "title": "Documents: expiry dates, expiring soon, and document packs",
+      "prompt": "Continue the Tijori React Native app. Build on the Documents section (src/DocumentsScreen.tsx, src/DocumentSheet.tsx, src/storage/).\n\nTask:\n1. Give each document an optional expiry date, with a date picker (reuse src/Calendar.tsx).\n2. Add an 'Expiring soon' section at the top of the Documents screen listing documents expiring within the next 90 days, with the days remaining. No push notifications.\n3. Add document packs: a small set of ready-made checklists (for example Passport application, Bank KYC, Driving licence) that show which of the required document types the user already has and which are missing. A pack is satisfied when every required type is present.\n4. Add unit tests for any new storage logic.\n\nKeep the existing visual language, keep the change additive, and do not restructure shared files more than is strictly necessary.\n\nHousekeeping: do not commit any temporary or patch files (.diff, .patch, .orig, .rej, .bak or editor backups), and do not leave reasoning or thinking-out-loud comments in the code.\n\nConstraints: TypeScript; npm run typecheck, npm run lint and npm test must pass; do not add new dependencies."
+    },
+    {
+      "title": "Polish: gold vault launcher icon, empty states and accessibility",
+      "prompt": "Continue the Tijori React Native app. This is a polish task.\n\nTask:\n1. Replace the default React Native launcher icon with a simple, tasteful gold vault mark for Tijori. Generate the mipmap PNGs for all densities plus the round variants (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi), on the app's off-white background with the app's gold accent. Keep it simple and flat - a rounded vault/safe shape with a dial. Do not use any external image service.\n2. Add proper empty states to the list screens (Passwords, Birthdays, Notes, Cards, Documents): a short message and a hint to add the first item, matching the existing visual language.\n3. Add accessibility labels to the icon-only buttons and the tab bar items so screen readers describe them properly.\n\nKeep the existing visual language and keep the change additive.\n\nHousekeeping: do not commit any temporary or patch files (.diff, .patch, .orig, .rej, .bak or editor backups), and do not leave reasoning or thinking-out-loud comments in the code.\n\nConstraints: TypeScript; npm run typecheck, npm run lint and npm test must pass; do not add new dependencies."
+    }
+  ]
+}

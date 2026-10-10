@@ -1,0 +1,31 @@
+name: Start next Jules task
+
+# Jules has no scheduler of its own, so this workflow is the scheduler: it
+# starts the next queued task in .jules/tasks.json by calling the Jules API.
+# It runs every two hours, half an hour after the merge job, and the script is
+# idempotent and gated so it can never start a duplicate or pile tasks up.
+
+on:
+  schedule:
+    # GitHub cron is UTC. These fire at IST 00:30, 02:30, 04:30, 06:30 ...
+    - cron: '0 1-23/2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  start:
+    name: Start next queued Jules task
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start the next task
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .jules/start_next.py
