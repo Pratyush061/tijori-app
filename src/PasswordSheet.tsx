@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
+  Animated,
+  Dimensions,
   Modal,
+  PanResponder,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +20,24 @@ import { Icon } from './components';
 import type { PasswordEntry } from './data';
 import { colors, radius, space } from './theme';
 
-const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
+const CATEGORIES = [
+  'Email',
+  'Banking',
+  'Social',
+  'Work',
+  'Government / ID',
+  'Shopping',
+  'Other',
+];
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+// The sheet is free to drag. Pulled above FULL_THRESHOLD it settles to full
+// screen; released below DISMISS_THRESHOLD it slides away; in between it stays
+// where the finger left it.
+const MIN_SHEET_HEIGHT = 160;
+const DEFAULT_SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.72);
+const FULL_THRESHOLD = SCREEN_HEIGHT * 0.9;
+const DISMISS_THRESHOLD = SCREEN_HEIGHT * 0.25;
 
 type Props = {
   visible: boolean;
@@ -27,7 +47,13 @@ type Props = {
   entry?: PasswordEntry | null;
 };
 
-export function PasswordSheet({ visible, onClose, onSave, onDelete, entry }: Props) {
+export function PasswordSheet({
+  visible,
+  onClose,
+  onSave,
+  onDelete,
+  entry,
+}: Props) {
   const [name, setName] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [password, setPassword] = useState('');
@@ -36,10 +62,59 @@ export function PasswordSheet({ visible, onClose, onSave, onDelete, entry }: Pro
   const [copied, setCopied] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const sheetHeight = useRef(new Animated.Value(DEFAULT_SHEET_HEIGHT)).current;
+  const dragStartHeight = useRef(DEFAULT_SHEET_HEIGHT);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 2,
+      onPanResponderGrant: () => {
+        sheetHeight.stopAnimation(value => {
+          dragStartHeight.current = value;
+        });
+      },
+      onPanResponderMove: (_, g) => {
+        const next = Math.min(
+          SCREEN_HEIGHT,
+          Math.max(MIN_SHEET_HEIGHT, dragStartHeight.current - g.dy),
+        );
+        sheetHeight.setValue(next);
+      },
+      onPanResponderRelease: (_, g) => {
+        const released = dragStartHeight.current - g.dy;
+        if (released >= FULL_THRESHOLD) {
+          Animated.timing(sheetHeight, {
+            toValue: SCREEN_HEIGHT,
+            duration: 180,
+            useNativeDriver: false,
+          }).start();
+        } else if (released <= DISMISS_THRESHOLD) {
+          Animated.timing(sheetHeight, {
+            toValue: 0,
+            duration: 180,
+            useNativeDriver: false,
+          }).start(() => onClose());
+        } else {
+          Animated.timing(sheetHeight, {
+            toValue: Math.min(
+              SCREEN_HEIGHT,
+              Math.max(MIN_SHEET_HEIGHT, released),
+            ),
+            duration: 120,
+            useNativeDriver: false,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
   useEffect(() => {
     setCopied(false);
     setShowPassword(false);
     if (visible) {
+      sheetHeight.setValue(DEFAULT_SHEET_HEIGHT);
+      dragStartHeight.current = DEFAULT_SHEET_HEIGHT;
       if (entry) {
         setName(entry.name);
         setSubtitle(entry.subtitle);
@@ -54,7 +129,7 @@ export function PasswordSheet({ visible, onClose, onSave, onDelete, entry }: Pro
         setFavorite(false);
       }
     }
-  }, [visible, entry]);
+  }, [visible, entry, sheetHeight]);
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -85,100 +160,133 @@ export function PasswordSheet({ visible, onClose, onSave, onDelete, entry }: Pro
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.sheet}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardView}
         >
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-              <Text style={styles.headerButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.title}>{entry ? 'Edit Password' : 'New Password'}</Text>
-            <TouchableOpacity onPress={handleSave} style={styles.headerButton}>
-              <Text style={[styles.headerButtonText, { fontWeight: '600' }]}>Save</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
-            <View style={styles.fieldGroup}>
-              <TextInput
-                style={[styles.input, styles.inputBorder]}
-                placeholder="Name (e.g. Google)"
-                placeholderTextColor={colors.dim}
-                value={name}
-                onChangeText={setName}
-              />
-              <TextInput
-                style={[styles.input, styles.inputBorder]}
-                placeholder="Username / ID"
-                placeholderTextColor={colors.dim}
-                value={subtitle}
-                onChangeText={setSubtitle}
-                autoCapitalize="none"
-              />
-              <View style={styles.passwordRow}>
-                <TextInput
-                  style={[styles.input, styles.flex]}
-                  placeholder="Password"
-                  placeholderTextColor={colors.dim}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  style={styles.eyeButton}
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  <Icon name="eye" size={20} color={showPassword ? colors.blue : colors.dim} />
-                </TouchableOpacity>
-              </View>
+          <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+            <View style={styles.grabberArea} {...panResponder.panHandlers}>
+              <View style={styles.grabber} />
             </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.sectionTitle}>Category</Text>
-              <View style={styles.chipsRow}>
-                {CATEGORIES.map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[
-                      styles.chip,
-                      category === c && styles.chipActive
-                    ]}
-                    onPress={() => setCategory(c)}
-                  >
-                    <Text style={[styles.chipText, category === c && styles.chipTextActive]}>
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Favorite</Text>
-                <Switch
-                  value={favorite}
-                  onValueChange={setFavorite}
-                  trackColor={{ true: colors.green }}
-                />
-              </View>
-            </View>
-
-            {entry && (
-              <TouchableOpacity style={[styles.deleteButton, { marginTop: space.md }]} onPress={handleCopy}>
-                <Text style={[styles.deleteButtonText, { color: copied ? colors.green : colors.blue }]}>
-                  {copied ? 'Copied!' : 'Copy Password'}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.headerButton}>
+                <Text style={styles.headerButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.title}>
+                {entry ? 'Edit Password' : 'New Password'}
+              </Text>
+              <TouchableOpacity
+                onPress={handleSave}
+                style={styles.headerButton}
+              >
+                <Text style={[styles.headerButtonText, { fontWeight: '600' }]}>
+                  Save
                 </Text>
               </TouchableOpacity>
-            )}
+            </View>
 
-            {entry && onDelete && (
-              <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
-                <Text style={styles.deleteButtonText}>Delete Password</Text>
-              </TouchableOpacity>
-            )}
-          </ScrollView>
+            <ScrollView
+              style={styles.form}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.fieldGroup}>
+                <TextInput
+                  style={[styles.input, styles.inputBorder]}
+                  placeholder="Name (e.g. Google)"
+                  placeholderTextColor={colors.dim}
+                  value={name}
+                  onChangeText={setName}
+                />
+                <TextInput
+                  style={[styles.input, styles.inputBorder]}
+                  placeholder="Username / ID"
+                  placeholderTextColor={colors.dim}
+                  value={subtitle}
+                  onChangeText={setSubtitle}
+                  autoCapitalize="none"
+                />
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[styles.input, styles.flex]}
+                    placeholder="Password"
+                    placeholderTextColor={colors.dim}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Icon
+                      name="eye"
+                      size={20}
+                      color={showPassword ? colors.blue : colors.dim}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.sectionTitle}>Category</Text>
+                <View style={styles.chipsRow}>
+                  {CATEGORIES.map(c => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.chip, category === c && styles.chipActive]}
+                      onPress={() => setCategory(c)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          category === c && styles.chipTextActive,
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Favorite</Text>
+                  <Switch
+                    value={favorite}
+                    onValueChange={setFavorite}
+                    trackColor={{ true: colors.green }}
+                  />
+                </View>
+              </View>
+
+              {entry && (
+                <TouchableOpacity
+                  style={[styles.deleteButton, { marginTop: space.md }]}
+                  onPress={handleCopy}
+                >
+                  <Text
+                    style={[
+                      styles.deleteButtonText,
+                      { color: copied ? colors.green : colors.blue },
+                    ]}
+                  >
+                    {copied ? 'Copied!' : 'Copy Password'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {entry && onDelete && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={onDelete}
+                >
+                  <Text style={styles.deleteButtonText}>Delete Password</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </Animated.View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -191,11 +299,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
   },
+  keyboardView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   sheet: {
     backgroundColor: colors.bg,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: '90%',
+    overflow: 'hidden',
+  },
+  grabberArea: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  grabber: {
+    width: 38,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.dim2,
   },
   header: {
     flexDirection: 'row',
