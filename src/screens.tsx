@@ -129,11 +129,14 @@ export function VaultScreen() {
 
 /* -------------------------------------------------------------- passwords */
 
+const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
+
 export function PasswordsScreen() {
   const [items, setItems] = React.useState<PasswordEntry[]>([]);
   const [sheetVisible, setSheetVisible] = React.useState(false);
   const [selectedEntry, setSelectedEntry] = React.useState<PasswordEntry | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [activeCategory, setActiveCategory] = React.useState<string | null>(null);
 
   const loadItems = async () => {
     let stored = await passwordStorage.list();
@@ -145,6 +148,7 @@ export function PasswordsScreen() {
           subtitle: p.subtitle,
           color: p.color,
           initial: p.initial,
+          category: p.category,
         });
       }
       stored = await passwordStorage.list();
@@ -173,11 +177,13 @@ export function PasswordsScreen() {
     }
   };
 
-  const filteredItems = items.filter((item) =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredItems = items.filter((item) => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.category?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = activeCategory ? item.category === activeCategory : true;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <View style={styles.flex}>
@@ -200,6 +206,32 @@ export function PasswordsScreen() {
           onChangeText={setSearchQuery}
         />
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterChipsScroll}
+      >
+        <TouchableOpacity
+          style={[styles.filterChip, activeCategory === null && styles.filterChipActive]}
+          onPress={() => setActiveCategory(null)}
+        >
+          <Text style={[styles.filterChipText, activeCategory === null && styles.filterChipTextActive]}>
+            All
+          </Text>
+        </TouchableOpacity>
+        {CATEGORIES.map((c) => (
+          <TouchableOpacity
+            key={c}
+            style={[styles.filterChip, activeCategory === c && styles.filterChipActive]}
+            onPress={() => setActiveCategory(activeCategory === c ? null : c)}
+          >
+            <Text style={[styles.filterChipText, activeCategory === c && styles.filterChipTextActive]}>
+              {c}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       <SectionLabel>Security</SectionLabel>
       <InsetGroup>
@@ -226,7 +258,7 @@ export function PasswordsScreen() {
             divider={i > 0}
             leading={<Monogram label={p.initial} color={p.color} />}
             title={p.name}
-            subtitle={p.subtitle}
+            subtitle={[p.subtitle, p.category].filter(Boolean).join(' • ')}
             onPress={() => {
               setSelectedEntry(p);
               setSheetVisible(true);
@@ -691,6 +723,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: 11,
     backgroundColor: 'rgba(118,118,128,0.12)',
+  },
+  filterChipsScroll: {
+    paddingHorizontal: space.md,
+    paddingTop: space.md,
+    gap: space.xs,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(118,118,128,0.12)',
+    marginRight: space.xs,
+  },
+  filterChipActive: {
+    backgroundColor: colors.ink,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.ink2,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
   },
   searchText: {
     fontSize: 16,

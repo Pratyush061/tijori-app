@@ -30,7 +30,8 @@ describe('AsyncStoragePasswordStorage', () => {
       name: 'Google',
       subtitle: 'test@g.com',
       color: '#000',
-      initial: 'G'
+      initial: 'G',
+      category: 'Email'
     });
 
     expect(result.id).toBeDefined();
@@ -42,10 +43,10 @@ describe('AsyncStoragePasswordStorage', () => {
   });
 
   it('updates an existing entry', async () => {
-    const mockData = [{ id: '1', name: 'Test', subtitle: 'old', color: '#000', initial: 'T' }];
+    const mockData = [{ id: '1', name: 'Test', subtitle: 'old', color: '#000', initial: 'T', category: 'Work' }];
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
 
-    const result = await passwordStorage.update('1', { subtitle: 'new' });
+    const result = await passwordStorage.update('1', { subtitle: 'new', category: 'Social' });
     expect(result.subtitle).toBe('new');
     expect(AsyncStorage.setItem).toHaveBeenCalledWith(
       '@tijori_passwords',
