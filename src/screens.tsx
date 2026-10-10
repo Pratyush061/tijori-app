@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import {
-  Card,
   Chevron,
   Icon,
   InsetGroup,
@@ -40,7 +39,11 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       <Text style={styles.lockTitle}>Tijori</Text>
       <Text style={styles.lockCaption}>Your private locker</Text>
 
-      <TouchableOpacity style={styles.lockButton} activeOpacity={0.85} onPress={onUnlock}>
+      <TouchableOpacity
+        style={styles.lockButton}
+        activeOpacity={0.85}
+        onPress={onUnlock}
+      >
         <Icon name="shield" size={19} color="#FFFFFF" />
         <Text style={styles.lockButtonText}>Unlock with Face ID</Text>
       </TouchableOpacity>
@@ -51,7 +54,12 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
 
 /* ------------------------------------------------------------------ vault */
 
-const categories: { label: string; count: string; icon: IconName; color: string }[] = [
+const categories: {
+  label: string;
+  count: string;
+  icon: IconName;
+  color: string;
+}[] = [
   { label: 'Passwords', count: '24 items', icon: 'key', color: colors.blue },
   { label: 'Birthdays', count: '9 upcoming', icon: 'cake', color: colors.pink },
   { label: 'Notes', count: '15 secured', icon: 'note', color: colors.orange },
@@ -60,10 +68,15 @@ const categories: { label: string; count: string; icon: IconName; color: string 
 
 export function VaultScreen() {
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.bigTitleWrap}>
         <Text style={styles.bigTitleSerif}>Good evening</Text>
-        <Text style={styles.bigSubtitle}>Everything in your vault is safe and synced.</Text>
+        <Text style={styles.bigSubtitle}>
+          Everything in your vault is safe and synced.
+        </Text>
       </View>
 
       <View style={styles.hero}>
@@ -73,7 +86,9 @@ export function VaultScreen() {
           </View>
           <View style={styles.flex}>
             <Text style={styles.heroTitle}>Vault secured</Text>
-            <Text style={styles.heroMeta}>End-to-end encrypted · backed up 2h ago</Text>
+            <Text style={styles.heroMeta}>
+              End-to-end encrypted · backed up 2h ago
+            </Text>
           </View>
         </View>
         <View style={styles.heroStats}>
@@ -110,7 +125,10 @@ export function VaultScreen() {
 
 export function PasswordsScreen() {
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.searchBar}>
         <Icon name="search" size={17} color={colors.dim} strokeWidth={2} />
         <Text style={styles.searchText}>Search</Text>
@@ -121,7 +139,9 @@ export function PasswordsScreen() {
         <ListRow
           divider={false}
           leading={
-            <View style={[styles.alertIcon, { backgroundColor: colors.orange }]}>
+            <View
+              style={[styles.alertIcon, { backgroundColor: colors.orange }]}
+            >
               <Icon name="shield" size={20} color="#FFFFFF" />
             </View>
           }
@@ -159,7 +179,10 @@ export function BirthdaysScreen() {
   const next = birthdays[0];
   const upcoming = birthdays.slice(1);
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.segment}>
         <View style={[styles.segmentItem, styles.segmentItemOn]}>
           <Text style={styles.segmentTextOn}>Upcoming</Text>
@@ -208,7 +231,10 @@ export function SettingsScreen() {
   const [sync, setSync] = React.useState(true);
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      showsVerticalScrollIndicator={false}
+    >
       <InsetGroup>
         <View style={styles.profile}>
           <View style={styles.profileAvatar}>
@@ -225,7 +251,11 @@ export function SettingsScreen() {
       <SectionLabel>Security</SectionLabel>
       <InsetGroup>
         <KeyValueRow label="Face ID unlock" divider={false}>
-          <Switch value={faceId} onValueChange={setFaceId} trackColor={{ true: colors.green }} />
+          <Switch
+            value={faceId}
+            onValueChange={setFaceId}
+            trackColor={{ true: colors.green }}
+          />
         </KeyValueRow>
         <KeyValueRow label="Auto-lock">
           <Text style={styles.krowValue}>Immediately</Text>
@@ -238,7 +268,11 @@ export function SettingsScreen() {
       <SectionLabel>Data</SectionLabel>
       <InsetGroup>
         <KeyValueRow label="iCloud sync" divider={false}>
-          <Switch value={sync} onValueChange={setSync} trackColor={{ true: colors.green }} />
+          <Switch
+            value={sync}
+            onValueChange={setSync}
+            trackColor={{ true: colors.green }}
+          />
         </KeyValueRow>
         <KeyValueRow label="Back up now">
           <Text style={styles.krowValue}>2h ago</Text>

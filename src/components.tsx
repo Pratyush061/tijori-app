@@ -37,7 +37,12 @@ function Gear({ color }: { color: string }) {
   );
 }
 
-export function Icon({ name, size = 22, color = colors.ink, strokeWidth = 1.8 }: IconProps) {
+export function Icon({
+  name,
+  size = 22,
+  color = colors.ink,
+  strokeWidth = 1.8,
+}: IconProps) {
   const s = {
     fill: 'none',
     stroke: color,
@@ -50,7 +55,10 @@ export function Icon({ name, size = 22, color = colors.ink, strokeWidth = 1.8 }:
     <Svg width={size} height={size} viewBox="0 0 24 24">
       {name === 'vault' && (
         <>
-          <Path {...s} d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" />
+          <Path
+            {...s}
+            d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"
+          />
         </>
       )}
       {name === 'key' && (
@@ -62,7 +70,10 @@ export function Icon({ name, size = 22, color = colors.ink, strokeWidth = 1.8 }:
       {name === 'cake' && (
         <>
           <Path {...s} d="M4 20h16M5 20v-6a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6" />
-          <Path {...s} d="M12 8V4M12 4c-1.5 0-2.5-1-2.5-2M12 4c1.5 0 2.5-1 2.5-2" />
+          <Path
+            {...s}
+            d="M12 8V4M12 4c-1.5 0-2.5-1-2.5-2M12 4c1.5 0 2.5-1 2.5-2"
+          />
         </>
       )}
       {name === 'gear' && <Gear color={color} />}
@@ -132,8 +143,12 @@ export function Monogram({
           borderRadius: round ? size / 2 : Math.round(size * 0.28),
           backgroundColor: color,
         },
-      ]}>
-      <Text style={[styles.monogramText, { fontSize: Math.round(size * 0.42) }]} numberOfLines={1}>
+      ]}
+    >
+      <Text
+        style={[styles.monogramText, { fontSize: Math.round(size * 0.42) }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
@@ -144,7 +159,13 @@ export function SectionLabel({ children }: { children: string }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
-export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+export function Card({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: ViewStyle;
+}) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
@@ -172,7 +193,8 @@ export function ListRow({
       activeOpacity={0.6}
       onPress={onPress}
       disabled={!onPress}
-      style={[styles.row, divider && styles.rowDivider]}>
+      style={[styles.row, divider && styles.rowDivider]}
+    >
       {leading}
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>
@@ -207,7 +229,9 @@ export function KeyValueRow({
 }
 
 export function Chevron() {
-  return <Icon name="chevron" size={14} color={colors.dim2} strokeWidth={2.2} />;
+  return (
+    <Icon name="chevron" size={14} color={colors.dim2} strokeWidth={2.2} />
+  );
 }
 
 /* --------------------------------------------------------------- tab bar */
@@ -221,7 +245,13 @@ const TABS: { key: TabKey; label: string; icon: IconName }[] = [
   { key: 'settings', label: 'Settings', icon: 'gear' },
 ];
 
-export function TabBar({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
+export function TabBar({
+  active,
+  onChange,
+}: {
+  active: TabKey;
+  onChange: (t: TabKey) => void;
+}) {
   return (
     <View style={styles.tabBar}>
       {TABS.map(t => {
@@ -232,7 +262,8 @@ export function TabBar({ active, onChange }: { active: TabKey; onChange: (t: Tab
             key={t.key}
             style={styles.tab}
             activeOpacity={0.7}
-            onPress={() => onChange(t.key)}>
+            onPress={() => onChange(t.key)}
+          >
             <Icon name={t.icon} size={23} color={tint} />
             <Text style={[styles.tabLabel, { color: tint }]}>{t.label}</Text>
           </TouchableOpacity>

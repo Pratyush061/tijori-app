@@ -19,7 +19,8 @@ import {
 } from './src/screens';
 import { colors, space } from './src/theme';
 
-const TOP_INSET = Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 48;
+const TOP_INSET =
+  Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 48;
 
 function NavBar({ tab }: { tab: TabKey }) {
   if (tab === 'vault') {
@@ -38,7 +39,12 @@ function NavBar({ tab }: { tab: TabKey }) {
     );
   }
 
-  const title = tab === 'passwords' ? 'Passwords' : tab === 'birthdays' ? 'Birthdays' : 'Settings';
+  const title =
+    tab === 'passwords'
+      ? 'Passwords'
+      : tab === 'birthdays'
+      ? 'Birthdays'
+      : 'Settings';
   const showPlus = tab !== 'settings';
 
   return (
