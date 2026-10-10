@@ -20,10 +20,12 @@ import {
   SectionLabel,
 } from './components';
 import type { IconName } from './components';
-import { birthdays, passwords } from './data';
-import type { PasswordEntry } from './data';
-import { passwordStorage } from './storage/asyncStorage';
+import { birthdays, passwords, getDaysAway, formatBirthdayDate } from './data';
+import type { PasswordEntry, Birthday } from './data';
+import { passwordStorage, birthdayStorage } from './storage/asyncStorage';
 import { PasswordSheet } from './PasswordSheet';
+import { BirthdaySheet } from './BirthdaySheet';
+import { Calendar } from './Calendar';
 import { colors, radius, space } from './theme';
 
 export const serifFont = Platform.select({
@@ -253,51 +255,191 @@ export function PasswordsScreen() {
 /* -------------------------------------------------------------- birthdays */
 
 export function BirthdaysScreen() {
-  const next = birthdays[0];
-  const upcoming = birthdays.slice(1);
+  const [items, setItems] = React.useState<Birthday[]>([]);
+  const [sheetVisible, setSheetVisible] = React.useState(false);
+  const [selectedEntry, setSelectedEntry] = React.useState<Birthday | null>(null);
+  const [viewMode, setViewMode] = React.useState<'list' | 'calendar'>('list');
+  const [selectedDate, setSelectedDate] = React.useState<string | undefined>(undefined);
+
+  const loadItems = async () => {
+    let stored = await birthdayStorage.list();
+    if (stored.length === 0) {
+      for (const b of birthdays) {
+        await birthdayStorage.create({
+          name: b.name,
+          date: b.date,
+          includeYear: b.includeYear,
+          color: b.color,
+          initial: b.initial,
+          note: b.note,
+        });
+      }
+      stored = await birthdayStorage.list();
+    }
+    setItems(stored);
+  };
+
+  React.useEffect(() => {
+    loadItems();
+  }, []);
+
+  const handleSave = async (entry: Partial<Birthday>) => {
+    if (selectedEntry) {
+      await birthdayStorage.update(selectedEntry.id, entry);
+    } else {
+      await birthdayStorage.create(entry as Omit<Birthday, 'id'>);
+    }
+    await loadItems();
+  };
+
+  const handleDelete = async () => {
+    if (selectedEntry) {
+      await birthdayStorage.delete(selectedEntry.id);
+      setSheetVisible(false);
+      await loadItems();
+    }
+  };
+
+  const sortedItems = [...items].sort((a, b) => getDaysAway(a.date) - getDaysAway(b.date));
+  const next = sortedItems.length > 0 ? sortedItems[0] : null;
+  const upcoming = sortedItems.length > 1 ? sortedItems.slice(1) : [];
+
+  const markedDates = items.map(i => i.date);
+
+  const selectedDateBirthdays = selectedDate
+    ? items.filter(i => i.date.slice(5) === selectedDate.slice(5))
+    : [];
+
   return (
-    <ScrollView
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.segment}>
-        <View style={[styles.segmentItem, styles.segmentItemOn]}>
-          <Text style={styles.segmentTextOn}>Upcoming</Text>
+    <View style={styles.flex}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.segment}>
+          <TouchableOpacity
+            style={[styles.segmentItem, viewMode === 'list' && styles.segmentItemOn]}
+            onPress={() => setViewMode('list')}
+          >
+            <Text style={viewMode === 'list' ? styles.segmentTextOn : styles.segmentText}>Upcoming</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.segmentItem, viewMode === 'calendar' && styles.segmentItemOn]}
+            onPress={() => setViewMode('calendar')}
+          >
+            <Text style={viewMode === 'calendar' ? styles.segmentTextOn : styles.segmentText}>Calendar</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.segmentItem}>
-          <Text style={styles.segmentText}>All people</Text>
-        </View>
-      </View>
 
-      <View style={styles.nextUp}>
-        <Monogram label={next.initial} color={colors.pink} size={54} round />
-        <View style={styles.flex}>
-          <Text style={styles.nextUpName}>{next.name}</Text>
-          <Text style={styles.nextUpDate}>Turning 27 · {next.date}</Text>
-        </View>
-        <View style={styles.wishButton}>
-          <Text style={styles.wishButtonText}>Wish</Text>
-        </View>
-      </View>
+        {viewMode === 'list' ? (
+          <>
+            {next && (
+              <TouchableOpacity
+                style={styles.nextUp}
+                onPress={() => {
+                  setSelectedEntry(next);
+                  setSheetVisible(true);
+                }}
+              >
+                <Monogram label={next.initial} color={next.color} size={54} round />
+                <View style={styles.flex}>
+                  <Text style={styles.nextUpName}>{next.name}</Text>
+                  <Text style={styles.nextUpDate}>{formatBirthdayDate(next.date)}</Text>
+                </View>
+                <View style={styles.wishButton}>
+                  <Text style={styles.wishButtonText}>Wish</Text>
+                </View>
+              </TouchableOpacity>
+            )}
 
-      <SectionLabel>Coming up</SectionLabel>
-      <InsetGroup>
-        {upcoming.map((b, i) => (
-          <ListRow
-            key={b.id}
-            divider={i > 0}
-            leading={<Monogram label={b.initial} color={b.color} round />}
-            title={b.name}
-            subtitle={b.date}
-            right={
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>in {b.daysAway} days</Text>
+            {upcoming.length > 0 && (
+              <>
+                <SectionLabel>Coming up</SectionLabel>
+                <InsetGroup>
+                  {upcoming.map((b, i) => {
+                    const daysAway = getDaysAway(b.date);
+                    return (
+                      <ListRow
+                        key={b.id}
+                        divider={i > 0}
+                        leading={<Monogram label={b.initial} color={b.color} round />}
+                        title={b.name}
+                        subtitle={formatBirthdayDate(b.date)}
+                        onPress={() => {
+                          setSelectedEntry(b);
+                          setSheetVisible(true);
+                        }}
+                        right={
+                          <View style={styles.badge}>
+                            <Text style={styles.badgeText}>in {daysAway} days</Text>
+                          </View>
+                        }
+                      />
+                    );
+                  })}
+                </InsetGroup>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[styles.wishButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
+              onPress={() => {
+                setSelectedEntry(null);
+                setSheetVisible(true);
+              }}
+            >
+              <Text style={styles.wishButtonText}>Add Birthday</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Calendar
+              markedDates={markedDates}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+            {selectedDate && selectedDateBirthdays.length > 0 && (
+              <View style={{ marginTop: space.lg }}>
+                <SectionLabel>{`Birthdays on ${formatBirthdayDate(selectedDate)}`}</SectionLabel>
+                <InsetGroup>
+                  {selectedDateBirthdays.map((b, i) => (
+                    <ListRow
+                      key={b.id}
+                      divider={i > 0}
+                      leading={<Monogram label={b.initial} color={b.color} round />}
+                      title={b.name}
+                      onPress={() => {
+                        setSelectedEntry(b);
+                        setSheetVisible(true);
+                      }}
+                      right={<Chevron />}
+                    />
+                  ))}
+                </InsetGroup>
               </View>
-            }
-          />
-        ))}
-      </InsetGroup>
-    </ScrollView>
+            )}
+
+            <TouchableOpacity
+              style={[styles.wishButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
+              onPress={() => {
+                setSelectedEntry(null);
+                setSheetVisible(true);
+              }}
+            >
+              <Text style={styles.wishButtonText}>Add Birthday</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+
+      <BirthdaySheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        onSave={handleSave}
+        onDelete={selectedEntry ? handleDelete : undefined}
+        entry={selectedEntry}
+      />
+    </View>
   );
 }
 
