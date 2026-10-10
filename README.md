@@ -71,7 +71,12 @@ cd android && ./gradlew assembleDebug
 
 In CI, `.github/workflows/android.yml` runs on every push to `main` (and on pull requests and
 manual dispatch). It installs Node 20, JDK 17 and the Android SDK, runs the typecheck, lint and
-unit tests, then builds the debug APK and uploads it as the `tijori-debug-apk` artifact.
+unit tests, then builds two APKs and uploads them as artifacts:
+
+- **`tijori-release-apk`** — the JS bundle is compiled in, so it installs and runs standalone.
+  Use this one to test on a phone.
+- **`tijori-debug-apk`** — a debug build that loads JS from a Metro dev server (needs
+  `npx react-native start` plus `adb reverse tcp:8081 tcp:8081`).
 
 To install the built APK on a device:
 
