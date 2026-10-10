@@ -41,6 +41,11 @@ export function PasswordSheet({
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [genVisible, setGenVisible] = useState(false);
+  const [genLength, setGenLength] = useState(16);
+  const [genNumbers, setGenNumbers] = useState(true);
+  const [genSymbols, setGenSymbols] = useState(true);
+
   useEffect(() => {
     setCopied(false);
     setShowPassword(false);
@@ -58,6 +63,7 @@ export function PasswordSheet({
         setCategory(CATEGORIES[0]);
         setFavorite(false);
       }
+      setGenVisible(false);
     }
   }, [visible, entry]);
 
@@ -74,6 +80,44 @@ export function PasswordSheet({
     });
     onClose();
   };
+
+  const generatePassword = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const nums = '0123456789';
+    const syms = '!@#$%^&*()_+~`|}{[]:;?><,./-=';
+    let charset = chars;
+    if (genNumbers) charset += nums;
+    if (genSymbols) charset += syms;
+
+    let newPassword = '';
+    if (genNumbers) newPassword += nums[Math.floor(Math.random() * nums.length)];
+    if (genSymbols) newPassword += syms[Math.floor(Math.random() * syms.length)];
+
+    for (let i = newPassword.length; i < genLength; i++) {
+      newPassword += charset[Math.floor(Math.random() * charset.length)];
+    }
+
+    // Shuffle
+    newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
+    setPassword(newPassword);
+  };
+
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return null;
+    let score = 0;
+    if (pass.length >= 8) score += 1;
+    if (pass.length >= 12) score += 1;
+    if (/[A-Z]/.test(pass)) score += 1;
+    if (/[a-z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    if (score < 3) return { label: 'Weak', percent: '33%', color: colors.pink };
+    if (score < 5) return { label: 'Fair', percent: '66%', color: colors.orange };
+    return { label: 'Strong', percent: '100%', color: colors.green };
+  };
+
+  const strength = getPasswordStrength(password);
 
   const handleCopy = () => {
     if (password) {
@@ -131,6 +175,44 @@ export function PasswordSheet({
               />
             </TouchableOpacity>
           </View>
+          {strength && (
+            <View style={styles.strengthRow}>
+              <View style={styles.strengthBarBg}>
+                <View style={[styles.strengthBarFill, { width: strength.percent as any, backgroundColor: strength.color }]} />
+              </View>
+              <Text style={[styles.strengthLabel, { color: strength.color }]}>{strength.label}</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.genToggle} onPress={() => setGenVisible(!genVisible)}>
+            <Text style={styles.genToggleText}>{genVisible ? 'Hide Generator' : 'Generate Password'}</Text>
+          </TouchableOpacity>
+
+          {genVisible && (
+            <View style={styles.genSettings}>
+              <View style={styles.genRow}>
+                <Text style={styles.genLabel}>Length: {genLength}</Text>
+                <View style={styles.genControls}>
+                  <TouchableOpacity style={styles.genBtn} onPress={() => setGenLength(Math.max(12, genLength - 1))}>
+                    <Text style={styles.genBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.genBtn} onPress={() => setGenLength(Math.min(32, genLength + 1))}>
+                    <Text style={styles.genBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.genRow}>
+                <Text style={styles.genLabel}>Numbers</Text>
+                <Switch value={genNumbers} onValueChange={setGenNumbers} trackColor={{ true: colors.green }} />
+              </View>
+              <View style={styles.genRow}>
+                <Text style={styles.genLabel}>Symbols</Text>
+                <Switch value={genSymbols} onValueChange={setGenSymbols} trackColor={{ true: colors.green }} />
+              </View>
+              <TouchableOpacity style={styles.genAction} onPress={generatePassword}>
+                <Text style={styles.genActionText}>Generate & Fill</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -285,5 +367,92 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: colors.pink,
+  },
+  strengthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+  },
+  strengthBarBg: {
+    flex: 1,
+    height: 4,
+    backgroundColor: colors.sep,
+    borderRadius: 2,
+    marginRight: space.md,
+    overflow: 'hidden',
+  },
+  strengthBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    width: 45,
+    textAlign: 'right',
+  },
+  genToggle: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+  },
+  genToggleText: {
+    fontSize: 15,
+    color: colors.blue,
+    fontWeight: '500',
+  },
+  genSettings: {
+    backgroundColor: colors.bg,
+    padding: space.md,
+    borderBottomLeftRadius: radius.inset,
+    borderBottomRightRadius: radius.inset,
+  },
+  genRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.sm,
+  },
+  genLabel: {
+    fontSize: 15,
+    color: colors.ink,
+  },
+  genControls: {
+    flexDirection: 'row',
+    gap: space.sm,
+  },
+  genBtn: {
+    backgroundColor: colors.card,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  genBtnText: {
+    fontSize: 18,
+    color: colors.ink,
+    fontWeight: '500',
+  },
+  genAction: {
+    backgroundColor: colors.blue,
+    borderRadius: radius.inset,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: space.sm,
+  },
+  genActionText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

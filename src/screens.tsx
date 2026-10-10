@@ -81,6 +81,9 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
     alerts: 0,
   });
 
+  const [healthScore, setHealthScore] = React.useState(100);
+  const [healthAlerts, setHealthAlerts] = React.useState<PasswordEntry[]>([]);
+
   const [catCounts, setCatCounts] = React.useState({
     passwords: 0,
     birthdays: 0,
@@ -99,8 +102,62 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         cardStorage.list(),
       ]);
 
+      const extractTs = (id: string) => {
+        const match = id.match(/^(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+
+      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      let scoreDeduction = 0;
+      const weakPasswords: PasswordEntry[] = [];
+      const passSet = new Set<string>();
+      const reusedSet = new Set<string>();
+
+      ps.forEach(p => {
+        if (!p.password) return;
+
+        // Reused check
+        if (passSet.has(p.password)) {
+          reusedSet.add(p.password);
+        } else {
+          passSet.add(p.password);
+        }
+      });
+
+      ps.forEach(p => {
+        let isWeak = false;
+        let isReused = false;
+        let isOld = false;
+
+        if (p.password) {
+          let score = 0;
+          if (p.password.length >= 8) score += 1;
+          if (p.password.length >= 12) score += 1;
+          if (/[A-Z]/.test(p.password)) score += 1;
+          if (/[a-z]/.test(p.password)) score += 1;
+          if (/[0-9]/.test(p.password)) score += 1;
+          if (/[^A-Za-z0-9]/.test(p.password)) score += 1;
+
+          if (score < 3) isWeak = true;
+          if (reusedSet.has(p.password)) isReused = true;
+
+          const ts = extractTs(p.id);
+          if (ts > 0 && ts < oneYearAgo) isOld = true;
+        } else {
+          isWeak = true; // empty password
+        }
+
+        if (isWeak || isReused || isOld) {
+          weakPasswords.push(p);
+          scoreDeduction += 10;
+        }
+      });
+
+      setHealthScore(Math.max(0, 100 - scoreDeduction));
+      setHealthAlerts(weakPasswords);
+
       const upcoming = bs.filter(b => getDaysAway(b.date) <= 30).length;
-      const alerts = ps.filter(p => !p.password || p.password.trim() === '').length;
+      const alerts = weakPasswords.length;
 
       setStats({
         totalItems: ps.length + bs.length + ns.length + cs.length,
@@ -114,11 +171,6 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         notes: ns.length,
         cards: cs.length,
       });
-
-      const extractTs = (id: string) => {
-        const match = id.match(/^(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-      };
 
       const allItems: RecentItem[] = [
         ...ps.map(p => ({ id: p.id, title: p.name, subtitle: p.subtitle || 'Password', initial: p.initial, color: p.color, ts: extractTs(p.id) })),
@@ -179,6 +231,28 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         </View>
       </View>
 
+      {catCounts.passwords > 0 && (
+        <TouchableOpacity
+          style={[styles.hero, { marginTop: space.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.sep }]}
+          onPress={() => onTabSelect?.('passwords-health')}
+        >
+          <View style={[styles.heroRow, { justifyContent: 'space-between' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+              <View style={[styles.heroShield, { backgroundColor: healthScore > 80 ? 'rgba(52,199,89,0.15)' : healthScore > 50 ? 'rgba(255,159,10,0.15)' : 'rgba(255,55,95,0.15)', borderColor: 'transparent' }]}>
+                <Icon name="shield" size={24} color={healthScore > 80 ? colors.green : healthScore > 50 ? colors.orange : colors.pink} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={[styles.heroTitle, { color: colors.ink }]}>Vault Health: {healthScore}%</Text>
+                <Text style={[styles.heroMeta, { color: colors.dim }]}>
+                  {healthAlerts.length} {healthAlerts.length === 1 ? 'password needs' : 'passwords need'} attention
+                </Text>
+              </View>
+            </View>
+            <Chevron />
+          </View>
+        </TouchableOpacity>
+      )}
+
       <SectionLabel>Categories</SectionLabel>
       <View style={styles.grid}>
         {categories.map(c => (
@@ -226,12 +300,20 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
 
 const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
 
-export function PasswordsScreen() {
+export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealthAlerts?: boolean }) {
   const [items, setItems] = React.useState<PasswordEntry[]>([]);
   const [sheetVisible, setSheetVisible] = React.useState(false);
+  const [healthAlerts, setHealthAlerts] = React.useState<PasswordEntry[]>([]);
+  const [showHealthAlertsOnly, setShowHealthAlertsOnly] = React.useState(initialShowHealthAlerts || false);
   const [selectedEntry, setSelectedEntry] = React.useState<PasswordEntry | null>(null);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [activeCategory, setActiveCategory] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (initialShowHealthAlerts !== undefined) {
+      setShowHealthAlertsOnly(initialShowHealthAlerts);
+    }
+  }, [initialShowHealthAlerts]);
 
   const loadItems = async () => {
     let stored = await passwordStorage.list();
@@ -249,6 +331,55 @@ export function PasswordsScreen() {
       stored = await passwordStorage.list();
     }
     setItems(stored);
+
+    const extractTs = (id: string) => {
+      const match = id.match(/^(\d+)/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+
+    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const weakPasswords: PasswordEntry[] = [];
+    const passSet = new Set<string>();
+    const reusedSet = new Set<string>();
+
+    stored.forEach(p => {
+      if (!p.password) return;
+      if (passSet.has(p.password)) {
+        reusedSet.add(p.password);
+      } else {
+        passSet.add(p.password);
+      }
+    });
+
+    stored.forEach(p => {
+      let isWeak = false;
+      let isReused = false;
+      let isOld = false;
+
+      if (p.password) {
+        let score = 0;
+        if (p.password.length >= 8) score += 1;
+        if (p.password.length >= 12) score += 1;
+        if (/[A-Z]/.test(p.password)) score += 1;
+        if (/[a-z]/.test(p.password)) score += 1;
+        if (/[0-9]/.test(p.password)) score += 1;
+        if (/[^A-Za-z0-9]/.test(p.password)) score += 1;
+
+        if (score < 3) isWeak = true;
+        if (reusedSet.has(p.password)) isReused = true;
+
+        const ts = extractTs(p.id);
+        if (ts > 0 && ts < oneYearAgo) isOld = true;
+      } else {
+        isWeak = true;
+      }
+
+      if (isWeak || isReused || isOld) {
+        weakPasswords.push(p);
+      }
+    });
+
+    setHealthAlerts(weakPasswords);
   };
 
   React.useEffect(() => {
@@ -272,13 +403,18 @@ export function PasswordsScreen() {
     }
   };
 
-  const filteredItems = items.filter((item) => {
+  let filteredItems = items.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.category?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory ? item.category === activeCategory : true;
     return matchesSearch && matchesCategory;
   });
+
+  if (showHealthAlertsOnly) {
+    const alertIds = new Set(healthAlerts.map(a => a.id));
+    filteredItems = filteredItems.filter(item => alertIds.has(item.id));
+  }
 
   return (
     <View style={styles.flex}>
@@ -328,24 +464,38 @@ export function PasswordsScreen() {
         ))}
       </ScrollView>
 
-      <SectionLabel>Security</SectionLabel>
-      <InsetGroup>
-        <ListRow
-          divider={false}
-          leading={
-            <View
-              style={[styles.alertIcon, { backgroundColor: colors.orange }]}
-            >
-              <Icon name="shield" size={20} color="#FFFFFF" />
-            </View>
-          }
-          title="3 passwords need attention"
-          subtitle="Reused or older than a year"
-          right={<Chevron />}
-        />
-      </InsetGroup>
+      {healthAlerts.length > 0 && !showHealthAlertsOnly && (
+        <>
+          <SectionLabel>Security</SectionLabel>
+          <InsetGroup>
+            <ListRow
+              divider={false}
+              leading={
+                <View
+                  style={[styles.alertIcon, { backgroundColor: colors.orange }]}
+                >
+                  <Icon name="shield" size={20} color="#FFFFFF" />
+                </View>
+              }
+              title={`${healthAlerts.length} ${healthAlerts.length === 1 ? 'password needs' : 'passwords need'} attention`}
+              subtitle="Weak, reused or older than a year"
+              right={<Chevron />}
+              onPress={() => setShowHealthAlertsOnly(true)}
+            />
+          </InsetGroup>
+        </>
+      )}
 
-      <SectionLabel>All items</SectionLabel>
+      {showHealthAlertsOnly && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: space.lg }}>
+          <SectionLabel>Needs Attention</SectionLabel>
+          <TouchableOpacity onPress={() => setShowHealthAlertsOnly(false)}>
+            <Text style={{ color: colors.blue, fontSize: 14 }}>Show All</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!showHealthAlertsOnly && <SectionLabel>All items</SectionLabel>}
       <InsetGroup>
         {filteredItems.map((p, i) => (
           <ListRow
