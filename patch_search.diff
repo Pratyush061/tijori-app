@@ -1,0 +1,53 @@
+--- src/screens.tsx
++++ src/screens.tsx
+@@ -132,6 +132,7 @@
+   const [items, setItems] = React.useState<PasswordEntry[]>([]);
+   const [sheetVisible, setSheetVisible] = React.useState(false);
+   const [selectedEntry, setSelectedEntry] = React.useState<PasswordEntry | null>(null);
++  const [searchQuery, setSearchQuery] = React.useState('');
+
+   const loadItems = async () => {
+     let stored = await passwordStorage.list();
+@@ -176,14 +177,21 @@
+     }
+   };
+
++  const filteredItems = items.filter((item) =>
++    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
++    item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
++    item.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()))
++  );
++
+   return (
+     <View style={styles.flex}>
+       <View style={{ alignItems: 'flex-end', paddingHorizontal: space.xl, marginTop: -35, zIndex: 10, elevation: 10, paddingBottom: 10 }}>
+         <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+           <Icon name="plus" size={24} color={colors.ink} />
+         </TouchableOpacity>
+       </View>
+     <ScrollView
+       contentContainerStyle={styles.scroll}
+       showsVerticalScrollIndicator={false}
+     >
+       <View style={styles.searchBar}>
+         <Icon name="search" size={17} color={colors.dim} strokeWidth={2} />
+-        <Text style={styles.searchText}>Search</Text>
++        <TextInput
++          style={[styles.searchText, { flex: 1 }]}
++          placeholder="Search"
++          placeholderTextColor={colors.dim}
++          value={searchQuery}
++          onChangeText={setSearchQuery}
++        />
+       </View>
+
+       <SectionLabel>Security</SectionLabel>
+@@ -206,7 +214,7 @@
+
+       <SectionLabel>All items</SectionLabel>
+       <InsetGroup>
+-        {items.map((p, i) => (
++        {filteredItems.map((p, i) => (
+           <ListRow
+             key={p.id}
+             divider={i > 0}

@@ -30,3 +30,8 @@ jest.mock('react-native-svg', () => {
     Stop: stub('Stop'),
   };
 });
+
+jest.mock('@react-native-clipboard/clipboard', () => ({
+  setString: jest.fn(),
+  getString: jest.fn(),
+}));

@@ -1,0 +1,17 @@
+--- src/PasswordSheet.tsx
++++ src/PasswordSheet.tsx
+@@ -13,7 +13,6 @@
+ import Clipboard from '@react-native-clipboard/clipboard';
+-import { Icon, InsetGroup, ListRow } from './components';
+ import type { PasswordEntry } from './data';
+ import { colors, radius, space } from './theme';
+
+--- src/screens.tsx
++++ src/screens.tsx
+@@ -1,6 +1,5 @@
+ import React from 'react';
+ import {
+-  Modal,
+   Platform,
+   ScrollView,
+   StyleSheet,

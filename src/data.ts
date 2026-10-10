@@ -6,6 +6,9 @@ export type PasswordEntry = {
   subtitle: string;
   color: string;
   initial: string;
+  password?: string;
+  tags?: string[];
+  favorite?: boolean;
 };
 
 export type Birthday = {
