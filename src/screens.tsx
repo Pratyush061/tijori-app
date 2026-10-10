@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -20,6 +21,9 @@ import {
 } from './components';
 import type { IconName } from './components';
 import { birthdays, passwords } from './data';
+import type { PasswordEntry } from './data';
+import { passwordStorage } from './storage/asyncStorage';
+import { PasswordSheet } from './PasswordSheet';
 import { colors, radius, space } from './theme';
 
 export const serifFont = Platform.select({
@@ -124,14 +128,75 @@ export function VaultScreen() {
 /* -------------------------------------------------------------- passwords */
 
 export function PasswordsScreen() {
+  const [items, setItems] = React.useState<PasswordEntry[]>([]);
+  const [sheetVisible, setSheetVisible] = React.useState(false);
+  const [selectedEntry, setSelectedEntry] = React.useState<PasswordEntry | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  const loadItems = async () => {
+    let stored = await passwordStorage.list();
+    if (stored.length === 0) {
+      // Seed with sample data initially if empty
+      for (const p of passwords) {
+        await passwordStorage.create({
+          name: p.name,
+          subtitle: p.subtitle,
+          color: p.color,
+          initial: p.initial,
+        });
+      }
+      stored = await passwordStorage.list();
+    }
+    setItems(stored);
+  };
+
+  React.useEffect(() => {
+    loadItems();
+  }, []);
+
+  const handleSave = async (entry: Partial<PasswordEntry>) => {
+    if (selectedEntry) {
+      await passwordStorage.update(selectedEntry.id, entry);
+    } else {
+      await passwordStorage.create(entry as Omit<PasswordEntry, 'id'>);
+    }
+    loadItems();
+  };
+
+  const handleDelete = async () => {
+    if (selectedEntry) {
+      await passwordStorage.delete(selectedEntry.id);
+      loadItems();
+      setSheetVisible(false);
+    }
+  };
+
+  const filteredItems = items.filter((item) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.tags?.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
   return (
+    <View style={styles.flex}>
+      <View style={{ alignItems: 'flex-end', paddingHorizontal: space.xl, marginTop: -35, zIndex: 10, elevation: 10, paddingBottom: 10 }}>
+        <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+          <Icon name="plus" size={24} color={colors.ink} />
+        </TouchableOpacity>
+      </View>
     <ScrollView
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.searchBar}>
         <Icon name="search" size={17} color={colors.dim} strokeWidth={2} />
-        <Text style={styles.searchText}>Search</Text>
+        <TextInput
+          style={[styles.searchText, { flex: 1, height: 20, padding: 0 }]}
+          placeholder="Search"
+          placeholderTextColor={colors.dim}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
       </View>
 
       <SectionLabel>Security</SectionLabel>
@@ -153,13 +218,17 @@ export function PasswordsScreen() {
 
       <SectionLabel>All items</SectionLabel>
       <InsetGroup>
-        {passwords.map((p, i) => (
+        {filteredItems.map((p, i) => (
           <ListRow
             key={p.id}
             divider={i > 0}
             leading={<Monogram label={p.initial} color={p.color} />}
             title={p.name}
             subtitle={p.subtitle}
+            onPress={() => {
+              setSelectedEntry(p);
+              setSheetVisible(true);
+            }}
             right={
               <View style={styles.rowTail}>
                 <Text style={styles.dots}>••••••</Text>
@@ -170,6 +239,14 @@ export function PasswordsScreen() {
         ))}
       </InsetGroup>
     </ScrollView>
+      <PasswordSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        onSave={handleSave}
+        onDelete={selectedEntry ? handleDelete : undefined}
+        entry={selectedEntry}
+      />
+    </View>
   );
 }
 

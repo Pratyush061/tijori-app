@@ -52,7 +52,7 @@ function NavBar({ tab }: { tab: TabKey }) {
       <View style={styles.navLeft} />
       <Text style={styles.navTitle}>{title}</Text>
       <View style={styles.navRight}>
-        {showPlus ? <Icon name="plus" size={24} color={colors.ink} /> : null}
+        {showPlus && tab !== 'passwords' ? <Icon name="plus" size={24} color={colors.ink} /> : null}
       </View>
     </View>
   );
