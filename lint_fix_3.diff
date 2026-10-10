@@ -1,9 +1,0 @@
---- src/screens.tsx
-+++ src/screens.tsx
-@@ -1,7 +1,6 @@
- import React from 'react';
- import {
--  Modal,
-   Platform,
-   ScrollView,
-   StyleSheet,

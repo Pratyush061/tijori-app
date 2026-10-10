@@ -52,13 +52,6 @@ function NavBar({ tab }: { tab: TabKey }) {
       <View style={styles.navLeft} />
       <Text style={styles.navTitle}>{title}</Text>
       <View style={styles.navRight}>
-        {/* We will let the screen itself handle the plus button to access its state,
-            or we can expose a global event. For simplicity, we just hide it here
-            for passwords, and implement it inside PasswordsScreen's header or absolute positioned,
-            or we pass a callback. Wait, let's keep it and use an event system, or better,
-            we can render a top bar inside the screen. Actually, let's just use it here and pass a prop
-            if we need to, but React Navigation isn't used. Let's just remove it here for passwords and
-            put it in the PasswordsScreen so it can open the modal. */}
         {showPlus && tab !== 'passwords' ? <Icon name="plus" size={24} color={colors.ink} /> : null}
       </View>
     </View>
