@@ -14,11 +14,54 @@ export type PasswordEntry = {
 export type Birthday = {
   id: string;
   name: string;
-  date: string;
-  daysAway: number;
+  date: string; // YYYY-MM-DD
+  includeYear: boolean;
   color: string;
   initial: string;
+  note?: string;
 };
+
+export function getDaysAway(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parts = dateStr.split('-');
+  const bdayMonth = parseInt(parts[1], 10) - 1;
+  const bdayDate = parseInt(parts[2], 10);
+
+  let nextBday = new Date(today.getFullYear(), bdayMonth, bdayDate);
+
+  if (nextBday < today) {
+    nextBday.setFullYear(today.getFullYear() + 1);
+  }
+
+  const diffTime = Math.abs(nextBday.getTime() - today.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+export function formatBirthdayDate(dateStr: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parts = dateStr.split('-');
+  const bdayMonth = parseInt(parts[1], 10) - 1;
+  const bdayDate = parseInt(parts[2], 10);
+
+  let nextBday = new Date(today.getFullYear(), bdayMonth, bdayDate);
+
+  if (nextBday < today) {
+    nextBday.setFullYear(today.getFullYear() + 1);
+  }
+
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const dayName = days[nextBday.getDay()];
+  const monthName = months[nextBday.getMonth()];
+  const date = nextBday.getDate();
+
+  return `${date} ${monthName} · ${dayName}`;
+}
 
 export const passwords: PasswordEntry[] = [
   {
@@ -69,48 +112,48 @@ export const birthdays: Birthday[] = [
   {
     id: 'aarav',
     name: 'Aarav Sharma',
-    date: '13 October · Monday',
-    daysAway: 3,
+    date: '1995-10-13',
+    includeYear: true,
     color: colors.pink,
     initial: 'AS',
   },
   {
     id: 'meera',
     name: 'Meera Iyer',
-    date: '18 October · Saturday',
-    daysAway: 8,
+    date: '1998-10-18',
+    includeYear: false,
     color: colors.teal,
     initial: 'M',
   },
   {
     id: 'rohan',
     name: 'Rohan Gupta',
-    date: '25 October · Saturday',
-    daysAway: 15,
+    date: '1990-10-25',
+    includeYear: true,
     color: colors.green,
     initial: 'R',
   },
   {
     id: 'sara',
     name: 'Sara Khan',
-    date: '28 October · Tuesday',
-    daysAway: 18,
+    date: '2000-10-28',
+    includeYear: true,
     color: colors.blue,
     initial: 'S',
   },
   {
     id: 'kabir',
     name: 'Kabir Nair',
-    date: '2 November · Sunday',
-    daysAway: 23,
+    date: '1985-11-02',
+    includeYear: false,
     color: colors.indigo,
     initial: 'K',
   },
   {
     id: 'priya',
     name: 'Priya Desai',
-    date: '9 November · Sunday',
-    daysAway: 30,
+    date: '1992-11-09',
+    includeYear: true,
     color: colors.orange,
     initial: 'P',
   },
