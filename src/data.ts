@@ -164,3 +164,49 @@ export const birthdays: Birthday[] = [
     initial: 'P',
   },
 ];
+
+export type NoteEntry = {
+  id: string;
+  title: string;
+  body: string;
+  color: string;
+  initial: string;
+};
+
+export const notes: NoteEntry[] = [
+  {
+    id: 'note-1',
+    title: 'WiFi Passwords',
+    body: 'Home: MyWifi123\nOffice: OfficeNet456',
+    color: colors.orange,
+    initial: 'W',
+  },
+  {
+    id: 'note-2',
+    title: 'Router Admin',
+    body: 'IP: 192.168.1.1\nUser: admin\nPass: admin',
+    color: colors.teal,
+    initial: 'R',
+  },
+];
+
+export type CardEntry = {
+  id: string;
+  name: string;
+  last4: string;
+  expiry: string;
+  note?: string;
+  color: string;
+  initial: string;
+};
+
+export const cards: CardEntry[] = [
+  {
+    id: 'card-1',
+    name: 'Chase Sapphire',
+    last4: '1234',
+    expiry: '12/28',
+    color: colors.blue,
+    initial: 'C',
+  },
+];

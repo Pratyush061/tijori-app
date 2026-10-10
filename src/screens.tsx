@@ -22,7 +22,7 @@ import {
 import type { IconName } from './components';
 import { birthdays, passwords, getDaysAway, formatBirthdayDate } from './data';
 import type { PasswordEntry, Birthday } from './data';
-import { passwordStorage, birthdayStorage } from './storage/asyncStorage';
+import { passwordStorage, birthdayStorage, noteStorage, cardStorage } from './storage/asyncStorage';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
@@ -60,19 +60,87 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
 
 /* ------------------------------------------------------------------ vault */
 
-const categories: {
-  label: string;
-  count: string;
-  icon: IconName;
-  color: string;
-}[] = [
-  { label: 'Passwords', count: '24 items', icon: 'key', color: colors.blue },
-  { label: 'Birthdays', count: '9 upcoming', icon: 'cake', color: colors.pink },
-  { label: 'Notes', count: '15 secured', icon: 'note', color: colors.orange },
-  { label: 'Cards', count: '6 saved', icon: 'card', color: colors.green },
-];
+type VaultScreenProps = {
+  onOpenCards?: () => void;
+  onTabSelect?: (tab: any) => void;
+};
 
-export function VaultScreen() {
+type RecentItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  initial: string;
+  color: string;
+  ts: number;
+};
+
+export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
+  const [stats, setStats] = React.useState({
+    totalItems: 0,
+    upcomingBdays: 0,
+    alerts: 0,
+  });
+
+  const [catCounts, setCatCounts] = React.useState({
+    passwords: 0,
+    birthdays: 0,
+    notes: 0,
+    cards: 0,
+  });
+
+  const [recents, setRecents] = React.useState<RecentItem[]>([]);
+
+  React.useEffect(() => {
+    const load = async () => {
+      const [ps, bs, ns, cs] = await Promise.all([
+        passwordStorage.list(),
+        birthdayStorage.list(),
+        noteStorage.list(),
+        cardStorage.list(),
+      ]);
+
+      const upcoming = bs.filter(b => getDaysAway(b.date) <= 30).length;
+      const alerts = ps.filter(p => !p.password || p.password.trim() === '').length;
+
+      setStats({
+        totalItems: ps.length + bs.length + ns.length + cs.length,
+        upcomingBdays: upcoming,
+        alerts: alerts,
+      });
+
+      setCatCounts({
+        passwords: ps.length,
+        birthdays: bs.length,
+        notes: ns.length,
+        cards: cs.length,
+      });
+
+      const extractTs = (id: string) => {
+        const match = id.match(/^(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+
+      const allItems: RecentItem[] = [
+        ...ps.map(p => ({ id: p.id, title: p.name, subtitle: p.subtitle || 'Password', initial: p.initial, color: p.color, ts: extractTs(p.id) })),
+        ...bs.map(b => ({ id: b.id, title: b.name, subtitle: formatBirthdayDate(b.date), initial: b.initial, color: b.color, ts: extractTs(b.id) })),
+        ...ns.map(n => ({ id: n.id, title: n.title, subtitle: 'Note', initial: n.initial, color: n.color, ts: extractTs(n.id) })),
+        ...cs.map(c => ({ id: c.id, title: c.name, subtitle: `•••• ${c.last4}`, initial: c.initial, color: c.color, ts: extractTs(c.id) })),
+      ];
+
+      allItems.sort((a, b) => b.ts - a.ts);
+      setRecents(allItems.slice(0, 3));
+    };
+
+    load();
+  }, []);
+
+  const categories = [
+    { label: 'Passwords', count: `${catCounts.passwords} items`, icon: 'key' as IconName, color: colors.blue },
+    { label: 'Birthdays', count: `${catCounts.birthdays} items`, icon: 'cake' as IconName, color: colors.pink },
+    { label: 'Notes', count: `${catCounts.notes} items`, icon: 'note' as IconName, color: colors.orange },
+    { label: 'Cards', count: `${catCounts.cards} items`, icon: 'card' as IconName, color: colors.green },
+  ];
+
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
@@ -99,9 +167,9 @@ export function VaultScreen() {
         </View>
         <View style={styles.heroStats}>
           {[
-            { n: '54', l: 'Items' },
-            { n: '9', l: 'Upcoming' },
-            { n: '2', l: 'Alerts' },
+            { n: stats.totalItems.toString(), l: 'Items' },
+            { n: stats.upcomingBdays.toString(), l: 'Upcoming' },
+            { n: stats.alerts.toString(), l: 'Alerts' },
           ].map(s => (
             <View key={s.l}>
               <Text style={styles.heroStatNum}>{s.n}</Text>
@@ -114,15 +182,42 @@ export function VaultScreen() {
       <SectionLabel>Categories</SectionLabel>
       <View style={styles.grid}>
         {categories.map(c => (
-          <View key={c.label} style={styles.catCard}>
+          <TouchableOpacity
+            key={c.label}
+            style={styles.catCard}
+            onPress={() => {
+              if (c.label === 'Cards') {
+                onOpenCards?.();
+              } else {
+                onTabSelect?.(c.label.toLowerCase());
+              }
+            }}
+          >
             <View style={[styles.catIcon, { backgroundColor: c.color }]}>
               <Icon name={c.icon} size={19} color="#FFFFFF" />
             </View>
             <Text style={styles.catTitle}>{c.label}</Text>
             <Text style={styles.catSubtitle}>{c.count}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
+
+      {recents.length > 0 && (
+        <>
+          <SectionLabel>Recently Added</SectionLabel>
+          <InsetGroup>
+            {recents.map((r, i) => (
+              <ListRow
+                key={r.id}
+                divider={i > 0}
+                leading={<Monogram label={r.initial} color={r.color} round />}
+                title={r.title}
+                subtitle={r.subtitle}
+              />
+            ))}
+          </InsetGroup>
+        </>
+      )}
     </ScrollView>
   );
 }
