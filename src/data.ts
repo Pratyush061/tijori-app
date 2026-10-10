@@ -7,7 +7,7 @@ export type PasswordEntry = {
   color: string;
   initial: string;
   password?: string;
-  tags?: string[];
+  category?: string;
   favorite?: boolean;
 };
 
@@ -70,6 +70,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: 'pratyushjj02@gmail.com',
     color: colors.blue,
     initial: 'G',
+    category: 'Email',
   },
   {
     id: 'netflix',
@@ -77,6 +78,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: 'pratyush.jain',
     color: colors.pink,
     initial: 'N',
+    category: 'Other',
   },
   {
     id: 'hdfc',
@@ -84,6 +86,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: '•••• 4821',
     color: colors.green,
     initial: 'H',
+    category: 'Banking',
   },
   {
     id: 'instagram',
@@ -91,6 +94,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: '@pratyush.jain',
     color: colors.indigo,
     initial: 'I',
+    category: 'Social',
   },
   {
     id: 'github',
@@ -98,6 +102,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: 'pratyush-dev',
     color: colors.ink,
     initial: 'Gh',
+    category: 'Work',
   },
   {
     id: 'amazon',
@@ -105,6 +110,7 @@ export const passwords: PasswordEntry[] = [
     subtitle: 'pratyushjj02@gmail.com',
     color: colors.orange,
     initial: 'A',
+    category: 'Shopping',
   },
 ];
 
