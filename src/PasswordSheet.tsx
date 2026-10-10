@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
+  Easing,
   Modal,
   PanResponder,
   StyleSheet,
@@ -31,13 +32,14 @@ const CATEGORIES = [
 ];
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-// The sheet is free to drag. Pulled above FULL_THRESHOLD it settles to full
-// screen; released below DISMISS_THRESHOLD it slides away; in between it stays
-// where the finger left it.
-const MIN_SHEET_HEIGHT = 160;
-const DEFAULT_SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.72);
-const FULL_THRESHOLD = SCREEN_HEIGHT * 0.9;
-const DISMISS_THRESHOLD = SCREEN_HEIGHT * 0.25;
+// The sheet is a full-height panel that we slide down with a transform (cheap,
+// smooth) rather than resizing its height (expensive, janky). REST_TRANSLATE
+// leaves ~72% of the screen visible on open; dragged up past FULL_AT it settles
+// to full screen; released past DISMISS_AT it slides away and closes.
+const REST_TRANSLATE = Math.round(SCREEN_HEIGHT * 0.28);
+const FULL_AT = SCREEN_HEIGHT * 0.06;
+const DISMISS_AT = SCREEN_HEIGHT * 0.75;
+const SNAP_MS = 220;
 
 type Props = {
   visible: boolean;
@@ -62,48 +64,50 @@ export function PasswordSheet({
   const [copied, setCopied] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const sheetHeight = useRef(new Animated.Value(DEFAULT_SHEET_HEIGHT)).current;
-  const dragStartHeight = useRef(DEFAULT_SHEET_HEIGHT);
+  const translateY = useRef(new Animated.Value(REST_TRANSLATE)).current;
+  const dragStart = useRef(REST_TRANSLATE);
+  const currentY = useRef(REST_TRANSLATE);
+
+  const settle = (to: number, after?: () => void) => {
+    currentY.current = to;
+    Animated.timing(translateY, {
+      toValue: to,
+      duration: SNAP_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished && after) {
+        after();
+      }
+    });
+  };
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 2,
       onPanResponderGrant: () => {
-        sheetHeight.stopAnimation(value => {
-          dragStartHeight.current = value;
+        translateY.stopAnimation(value => {
+          dragStart.current = value;
+          currentY.current = value;
         });
       },
       onPanResponderMove: (_, g) => {
         const next = Math.min(
           SCREEN_HEIGHT,
-          Math.max(MIN_SHEET_HEIGHT, dragStartHeight.current - g.dy),
+          Math.max(0, dragStart.current + g.dy),
         );
-        sheetHeight.setValue(next);
+        currentY.current = next;
+        translateY.setValue(next);
       },
-      onPanResponderRelease: (_, g) => {
-        const released = dragStartHeight.current - g.dy;
-        if (released >= FULL_THRESHOLD) {
-          Animated.timing(sheetHeight, {
-            toValue: SCREEN_HEIGHT,
-            duration: 180,
-            useNativeDriver: false,
-          }).start();
-        } else if (released <= DISMISS_THRESHOLD) {
-          Animated.timing(sheetHeight, {
-            toValue: 0,
-            duration: 180,
-            useNativeDriver: false,
-          }).start(() => onClose());
+      onPanResponderRelease: () => {
+        const y = currentY.current;
+        if (y <= FULL_AT) {
+          settle(0);
+        } else if (y >= DISMISS_AT) {
+          settle(SCREEN_HEIGHT, onClose);
         } else {
-          Animated.timing(sheetHeight, {
-            toValue: Math.min(
-              SCREEN_HEIGHT,
-              Math.max(MIN_SHEET_HEIGHT, released),
-            ),
-            duration: 120,
-            useNativeDriver: false,
-          }).start();
+          settle(y);
         }
       },
     }),
@@ -113,8 +117,9 @@ export function PasswordSheet({
     setCopied(false);
     setShowPassword(false);
     if (visible) {
-      sheetHeight.setValue(DEFAULT_SHEET_HEIGHT);
-      dragStartHeight.current = DEFAULT_SHEET_HEIGHT;
+      translateY.setValue(REST_TRANSLATE);
+      dragStart.current = REST_TRANSLATE;
+      currentY.current = REST_TRANSLATE;
       if (entry) {
         setName(entry.name);
         setSubtitle(entry.subtitle);
@@ -129,7 +134,7 @@ export function PasswordSheet({
         setFavorite(false);
       }
     }
-  }, [visible, entry, sheetHeight]);
+  }, [visible, entry, translateY]);
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -163,7 +168,12 @@ export function PasswordSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
         >
-          <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+          <Animated.View
+            style={[
+              styles.sheet,
+              { height: SCREEN_HEIGHT, transform: [{ translateY }] },
+            ]}
+          >
             <View style={styles.grabberArea} {...panResponder.panHandlers}>
               <View style={styles.grabber} />
             </View>
@@ -179,7 +189,9 @@ export function PasswordSheet({
                 onPress={handleSave}
                 style={styles.headerButton}
               >
-                <Text style={[styles.headerButtonText, { fontWeight: '600' }]}>
+                <Text
+                  style={[styles.headerButtonText, styles.headerButtonStrong]}
+                >
                   Save
                 </Text>
               </TouchableOpacity>
@@ -263,7 +275,7 @@ export function PasswordSheet({
 
               {entry && (
                 <TouchableOpacity
-                  style={[styles.deleteButton, { marginTop: space.md }]}
+                  style={[styles.deleteButton, styles.copyButton]}
                   onPress={handleCopy}
                 >
                   <Text
@@ -339,6 +351,9 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 17,
     color: colors.blue,
+  },
+  headerButtonStrong: {
+    fontWeight: '600',
   },
   form: {
     padding: space.md,
@@ -424,6 +439,9 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: 'center',
     marginTop: space.lg,
+  },
+  copyButton: {
+    marginTop: space.md,
   },
   deleteButtonText: {
     fontSize: 16,
