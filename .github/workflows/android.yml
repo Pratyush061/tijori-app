@@ -37,15 +37,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
-
+      # The ubuntu runner image already ships the Android SDK, so we drive
+      # sdkmanager directly instead of using a third-party setup action.
       - name: Install Android SDK components
         run: |
-          sdkmanager --install \
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "SDK root: $SDK_ROOT"
+          SDKMANAGER="$(ls -1 "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install \
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "platform-tools" \
