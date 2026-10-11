@@ -88,7 +88,7 @@ import { DocumentsScreen } from './src/DocumentsScreen';
 
 function App() {
   const [unlocked, setUnlocked] = useState(false);
-  const [tab, setTab] = useState<TabKey>('vault');
+  const [tab, setTab] = useState<TabKey | 'passwords-health'>('vault');
   const [showCards, setShowCards] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
 
@@ -103,15 +103,17 @@ function App() {
           <DocumentsScreen onBack={() => setShowDocuments(false)} />
         ) : (
           <>
-            <NavBar tab={tab} />
+            <NavBar tab={tab === 'passwords-health' ? 'passwords' : tab} />
             <View style={styles.content}>
               {tab === 'vault' ? (
                 <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
+              ) : tab === 'passwords-health' ? (
+                <PasswordsScreen initialShowHealthAlerts={true} />
               ) : (
                 <CurrentScreen tab={tab} />
               )}
             </View>
-            <TabBar active={tab} onChange={setTab} />
+            <TabBar active={tab === 'passwords-health' ? 'passwords' : tab} onChange={setTab as any} />
           </>
         )
       ) : (
