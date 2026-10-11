@@ -35,9 +35,24 @@ test('first run shows the create-passcode keypad', async () => {
   const json = JSON.stringify(tree.toJSON());
   expect(json).toContain('Tijori');
   expect(json).toContain('Create a passcode');
+  expect(json).toContain('STEP 1 OF 2');
 });
 
 jest.setTimeout(15000);
+test('first passcode submit immediately advances to confirmation', async () => {
+  const tree = await renderApp();
+
+  for (const digit of ['1', '2', '3', '4']) {
+    await tap(tree, digit);
+  }
+  await tap(tree, '✓');
+
+  const json = JSON.stringify(tree.toJSON());
+  expect(json).toContain('Confirm your passcode');
+  expect(json).toContain('STEP 2 OF 2');
+  expect(json).not.toContain('STEP 1 OF 2');
+});
+
 test('entering and confirming a passcode reveals the vault', async () => {
   const tree = await renderApp();
 

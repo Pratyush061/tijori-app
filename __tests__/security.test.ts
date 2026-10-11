@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   deriveKey,
+  deriveKeyAsync,
   makeSalt,
   encryptString,
   decryptString,
@@ -40,6 +41,13 @@ describe('crypto primitives', () => {
     const salt = makeSalt();
     expect(deriveKey('1234', salt).toString()).toBe(deriveKey('1234', salt).toString());
   });
+
+  it('async PBKDF2 matches the existing stored-key derivation exactly', async () => {
+    const salt = makeSalt();
+    const expected = deriveKey('1234', salt).toString();
+    const actual = await deriveKeyAsync('1234', salt);
+    expect(actual.toString()).toBe(expected);
+  }, 15000);
 
   it('derives a different key for a different salt', () => {
     expect(deriveKey('1234', makeSalt()).toString()).not.toBe(

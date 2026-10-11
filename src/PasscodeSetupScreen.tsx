@@ -11,9 +11,8 @@ const MAX_LENGTH = 8;
 
 /**
  * First-run screen: the user chooses the passcode that protects the vault.
- * Entry is on an in-app keypad, so nothing is ever hidden behind a system
- * keyboard. The passcode is the only key, and there is no recovery, so the
- * copy says so plainly.
+ * The first submit is deliberately synchronous and only advances the UI.
+ * Key derivation/storage runs only after the second, matching entry.
  */
 export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState<'create' | 'confirm'>('create');
@@ -32,18 +31,35 @@ export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
     setEntry(prev => prev.slice(0, -1));
   };
 
-  const onEnter = async () => {
+  const finishSetup = async (passcode: string) => {
+    setBusy(true);
+    try {
+      await initializeVault(passcode);
+      onDone();
+    } catch {
+      setBusy(false);
+      setError('Could not set up the vault. Please try again.');
+    }
+  };
+
+  const onEnter = () => {
     if (busy) return;
+
     if (entry.length < MIN_LENGTH) {
       setError(`Use at least ${MIN_LENGTH} digits.`);
       return;
     }
+
+    // Do not perform crypto or storage on the first submit. Advance straight
+    // to confirmation so the transition is immediate and obvious.
     if (step === 'create') {
       setFirst(entry);
       setEntry('');
+      setError(null);
       setStep('confirm');
       return;
     }
+
     if (entry !== first) {
       setError('The passcodes did not match. Start again.');
       setFirst('');
@@ -51,14 +67,8 @@ export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
       setStep('create');
       return;
     }
-    setBusy(true);
-    try {
-      await initializeVault(first);
-      onDone();
-    } catch {
-      setBusy(false);
-      setError('Could not set up the vault. Please try again.');
-    }
+
+    return finishSetup(first);
   };
 
   return (
@@ -68,18 +78,29 @@ export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
           <Icon name="lock" size={34} color={colors.goldDark} strokeWidth={1.5} />
         </View>
         <Text style={styles.brand}>Tijori</Text>
-        <Text style={styles.title}>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={styles.step}
+        >
+          {step === 'create' ? 'STEP 1 OF 2' : 'STEP 2 OF 2'}
+        </Text>
+        <Text accessibilityLiveRegion="polite" style={styles.title}>
           {step === 'create' ? 'Create a passcode' : 'Confirm your passcode'}
         </Text>
         <Text style={styles.caption}>
           {step === 'create'
-            ? 'This passcode is the only key to your vault.'
-            : 'Enter it once more to be sure.'}
+            ? 'Choose 4–8 digits, then tap ✓ to continue.'
+            : 'Enter the same digits once more, then tap ✓.'}
         </Text>
 
         <PasscodeDots filled={entry.length} error={!!error} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {busy ? <ActivityIndicator color={colors.gold} style={styles.busy} /> : null}
+        {busy ? (
+          <View style={styles.busyRow}>
+            <ActivityIndicator color={colors.gold} />
+            <Text style={styles.busyText}>Securing your vault…</Text>
+          </View>
+        ) : null}
       </View>
 
       <Keypad
@@ -129,11 +150,18 @@ const styles = StyleSheet.create({
     color: colors.goldDark,
     marginTop: space.md,
   },
+  step: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: colors.goldDark,
+    marginTop: space.lg,
+  },
   title: {
     fontSize: 19,
     fontWeight: '600',
     color: colors.ink,
-    marginTop: space.lg,
+    marginTop: space.sm,
   },
   caption: {
     fontSize: 14,
@@ -147,8 +175,15 @@ const styles = StyleSheet.create({
     marginTop: space.sm,
     textAlign: 'center',
   },
-  busy: {
+  busyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
     marginTop: space.sm,
+  },
+  busyText: {
+    fontSize: 13,
+    color: colors.dim,
   },
   hint: {
     fontSize: 12.5,

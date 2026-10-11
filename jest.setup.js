@@ -221,3 +221,9 @@ jest.mock('react-native-webview', () => {
   WebView.displayName = 'WebView';
   return { __esModule: true, WebView, default: WebView };
 });
+
+// The vault's key derivation is intentionally expensive (150k PBKDF2 rounds).
+// Unit tests exercise correctness, not cost, so use a small round count here;
+// production always uses the real value.
+// eslint-disable-next-line no-undef
+globalThis.__TIJORI_PBKDF2_ITERATIONS__ = 1000;
