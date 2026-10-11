@@ -336,12 +336,12 @@ const styles = StyleSheet.create({
     marginLeft: space.md,
   },
   rowTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     color: colors.ink,
   },
   rowSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.dim,
     marginTop: 1,
   },
@@ -353,7 +353,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
   },
   krowLabel: {
-    fontSize: 15.5,
+    fontSize: 17,
+    fontWeight: '600',
     color: colors.ink,
   },
   tabBar: {

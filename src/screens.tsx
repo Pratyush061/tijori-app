@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  DeviceEventEmitter,
   Platform,
   ScrollView,
   StyleSheet,
@@ -279,17 +280,36 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
 
       {catCounts.passwords > 0 && (
         <TouchableOpacity
-          style={[styles.hero, { marginTop: space.lg, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.sep }]}
+          style={[styles.hero, styles.healthHero]}
           onPress={() => onTabSelect?.('passwords-health')}
         >
-          <View style={[styles.heroRow, { justifyContent: 'space-between' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-              <View style={[styles.heroShield, { backgroundColor: healthScore > 80 ? 'rgba(52,199,89,0.15)' : healthScore > 50 ? 'rgba(255,159,10,0.15)' : 'rgba(255,55,95,0.15)', borderColor: 'transparent' }]}>
-                <Icon name="shield" size={24} color={healthScore > 80 ? colors.green : healthScore > 50 ? colors.orange : colors.pink} />
+          <View style={[styles.heroRow, styles.heroRowSpaceBetween]}>
+            <View style={styles.healthHeroContent}>
+              <View
+                style={[
+                  styles.heroShield,
+                  healthScore > 80
+                    ? styles.healthShieldGood
+                    : healthScore > 50
+                    ? styles.healthShieldFair
+                    : styles.healthShieldPoor,
+                ]}
+              >
+                <Icon
+                  name="shield"
+                  size={24}
+                  color={
+                    healthScore > 80
+                      ? colors.green
+                      : healthScore > 50
+                      ? colors.orange
+                      : colors.pink
+                  }
+                />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.heroTitle, { color: colors.ink }]}>Vault Health: {healthScore}%</Text>
-                <Text style={[styles.heroMeta, { color: colors.dim }]}>
+                <Text style={styles.healthTitle}>Vault Health: {healthScore}%</Text>
+                <Text style={styles.healthMeta}>
                   {healthAlerts.length} {healthAlerts.length === 1 ? 'password needs' : 'passwords need'} attention
                 </Text>
               </View>
@@ -335,6 +355,21 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
                 leading={<Monogram label={r.initial} color={r.color} round />}
                 title={r.title}
                 subtitle={r.subtitle}
+                onPress={() => {
+                  const sub = r.subtitle.toLowerCase();
+                  if (sub.includes('••••')) {
+                    onOpenCards?.();
+                  } else if (sub === 'note') {
+                    onTabSelect?.('notes');
+                  } else if (sub === 'password' || r.title !== r.subtitle && !sub.includes(' ') && !sub.includes('/')) {
+                    onTabSelect?.('passwords');
+                  } else if (sub.includes('document') || ['aadhaar', 'pan', 'passport', 'driving licence'].includes(sub)) {
+                    onOpenDocuments?.();
+                  } else {
+                    onTabSelect?.('birthdays');
+                  }
+                }}
+                right={<Chevron />}
               />
             ))}
           </InsetGroup>
@@ -346,7 +381,7 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
 
 /* -------------------------------------------------------------- passwords */
 
-const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
+const CATEGORIES = ['Favorites', 'Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
 
 export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealthAlerts?: boolean }) {
   const [items, setItems] = React.useState<PasswordEntry[]>([]);
@@ -447,7 +482,14 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.category?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory ? item.category === activeCategory : true;
+
+    let matchesCategory = true;
+    if (activeCategory === 'Favorites') {
+      matchesCategory = !!item.favorite;
+    } else if (activeCategory) {
+      matchesCategory = item.category === activeCategory;
+    }
+
     return matchesSearch && matchesCategory;
   });
 
@@ -458,7 +500,7 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
 
   return (
     <View style={styles.flex}>
-      <View style={{ alignItems: 'flex-end', paddingHorizontal: space.xl, marginTop: -35, zIndex: 10, elevation: 10, paddingBottom: 10 }}>
+      <View style={styles.floatingAddWrapper}>
         <TouchableOpacity
           onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}
           accessibilityLabel="Add Password"
@@ -474,7 +516,7 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
       <View style={styles.searchBar}>
         <Icon name="search" size={17} color={colors.dim} strokeWidth={2} />
         <TextInput
-          style={[styles.searchText, { flex: 1, height: 20, padding: 0 }]}
+          style={[styles.searchText, styles.searchTextInput]}
           placeholder="Search"
           placeholderTextColor={colors.dim}
           value={searchQuery}
@@ -510,8 +552,9 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
 
       {filteredItems.length === 0 ? (
         <View style={styles.empty}>
+          <Icon name="key" size={48} color={colors.dim2} />
           <Text style={styles.emptyTitle}>No passwords yet</Text>
-          <Text style={styles.emptyHint}>Add your first password to get started.</Text>
+          <Text style={styles.emptyHint}>Keep your accounts secure and easily accessible.</Text>
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => {
@@ -547,10 +590,10 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
           )}
 
           {showHealthAlertsOnly && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: space.lg }}>
+            <View style={styles.healthAlertsHeader}>
               <SectionLabel>Needs Attention</SectionLabel>
               <TouchableOpacity onPress={() => setShowHealthAlertsOnly(false)}>
-                <Text style={{ color: colors.blue, fontSize: 14 }}>Show All</Text>
+                <Text style={styles.showAllText}>Show All</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -614,6 +657,14 @@ export function BirthdaysScreen() {
     loadItems();
   }, []);
 
+  React.useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('actionAdd', () => {
+      setSelectedEntry(null);
+      setSheetVisible(true);
+    });
+    return () => sub.remove();
+  }, []);
+
   const handleSave = async (entry: Partial<Birthday>) => {
     if (selectedEntry) {
       await birthdayStorage.update(selectedEntry.id, entry);
@@ -665,8 +716,9 @@ export function BirthdaysScreen() {
         {viewMode === 'list' ? (
           items.length === 0 ? (
             <View style={styles.empty}>
+              <Icon name="cake" size={48} color={colors.dim2} />
               <Text style={styles.emptyTitle}>No birthdays yet</Text>
-              <Text style={styles.emptyHint}>Add your first birthday to get started.</Text>
+              <Text style={styles.emptyHint}>Add upcoming birthdays so you never forget.</Text>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={() => {
@@ -728,7 +780,7 @@ export function BirthdaysScreen() {
             )}
 
             <TouchableOpacity
-              style={[styles.wishButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
+              style={styles.addBirthdayBtn}
               onPress={() => {
                 setSelectedEntry(null);
                 setSheetVisible(true);
@@ -746,7 +798,7 @@ export function BirthdaysScreen() {
               onSelectDate={setSelectedDate}
             />
             {selectedDate && selectedDateBirthdays.length > 0 && (
-              <View style={{ marginTop: space.lg }}>
+              <View style={styles.calendarBirthdaysWrap}>
                 <SectionLabel>{`Birthdays on ${formatBirthdayDate(selectedDate)}`}</SectionLabel>
                 <InsetGroup>
                   {selectedDateBirthdays.map((b, i) => (
@@ -767,7 +819,7 @@ export function BirthdaysScreen() {
             )}
 
             <TouchableOpacity
-              style={[styles.wishButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
+              style={styles.addBirthdayBtn}
               onPress={() => {
                 setSelectedEntry(null);
                 setSheetVisible(true);
@@ -968,7 +1020,8 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.dim,
-    marginBottom: space.sm,
+    marginTop: space.lg,
+    marginBottom: 6,
   },
   emptyHint: {
     fontSize: 15,
@@ -1102,11 +1155,57 @@ const styles = StyleSheet.create({
     padding: space.lg + 4,
     backgroundColor: colors.heroB,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
+  },
+  heroRowSpaceBetween: {
+    justifyContent: 'space-between',
+  },
+  healthHero: {
+    marginTop: space.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.sep,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  healthHeroContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+  },
+  healthShieldGood: {
+    backgroundColor: 'rgba(52,199,89,0.15)',
+    borderColor: 'transparent',
+  },
+  healthShieldFair: {
+    backgroundColor: 'rgba(255,159,10,0.15)',
+    borderColor: 'transparent',
+  },
+  healthShieldPoor: {
+    backgroundColor: 'rgba(255,55,95,0.15)',
+    borderColor: 'transparent',
+  },
+  healthTitle: {
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  healthMeta: {
+    color: colors.dim,
+    fontSize: 12.5,
+    marginTop: 2,
   },
   heroShield: {
     width: 44,
@@ -1184,6 +1283,38 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  floatingAddWrapper: {
+    alignItems: 'flex-end',
+    paddingHorizontal: space.xl,
+    marginTop: -35,
+    zIndex: 10,
+    elevation: 10,
+    paddingBottom: 10,
+  },
+
+  healthAlertsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: space.lg,
+  },
+  showAllText: {
+    color: colors.blue,
+    fontSize: 14,
+  },
+
+  calendarBirthdaysWrap: {
+    marginTop: space.lg,
+  },
+  addBirthdayBtn: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    alignSelf: 'center',
+    marginTop: space.xl,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sm,
+  },
+
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1221,6 +1352,11 @@ const styles = StyleSheet.create({
   searchText: {
     fontSize: 16,
     color: colors.dim,
+  },
+  searchTextInput: {
+    flex: 1,
+    height: 20,
+    padding: 0,
   },
   alertIcon: {
     width: 40,

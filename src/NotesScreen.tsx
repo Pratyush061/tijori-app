@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  DeviceEventEmitter,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,6 +35,15 @@ export function NotesScreen() {
     load();
   }, []);
 
+  // The nav bar's "+" emits this so the button opens the note editor.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('actionAdd', () => {
+      setSelectedEntry(null);
+      setEditorVisible(true);
+    });
+    return () => sub.remove();
+  }, []);
+
   const handleSave = async (entry: Partial<NoteEntry>) => {
     if (selectedEntry) {
       await noteStorage.update(selectedEntry.id, entry);
@@ -52,7 +62,13 @@ export function NotesScreen() {
   };
 
   const stripHtml = (html: string) => {
-    return html.replace(/<[^>]*>?/gm, '').trim() || 'No preview';
+    return (
+      html
+        .replace(/<(br|p|div|h[1-6]|li|blockquote|pre)[^>]*>/gi, ' ')
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim() || 'No preview'
+    );
   };
 
   const filtered = items.filter(n =>
@@ -102,20 +118,41 @@ export function NotesScreen() {
           <>
             <View style={{ marginTop: space.lg }}>
               <InsetGroup>
-                {filtered.map((n, i) => (
-                  <ListRow
-                    key={n.id}
-                    divider={i > 0}
-                    leading={<Monogram label={n.initial} color={n.color} round />}
-                    title={n.title}
-                    subtitle={stripHtml(n.body).split('\n')[0]}
-                    onPress={() => {
-                      setSelectedEntry(n);
-                      setEditorVisible(true);
-                    }}
-                    right={<Chevron />}
-                  />
-                ))}
+                {filtered.map((n, i) => {
+                  let dateStr = '';
+                  if (n.id.includes('-')) {
+                    const timestampStr = n.id.split('-')[0];
+                    const timestamp = parseInt(timestampStr, 36);
+                    if (!isNaN(timestamp)) {
+                      dateStr = new Date(timestamp).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                      });
+                    }
+                  }
+                  if (!dateStr) {
+                    dateStr = new Date().toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    });
+                  }
+                  return (
+                    <ListRow
+                      key={n.id}
+                      divider={i > 0}
+                      leading={<Monogram label={n.initial} color={n.color} round />}
+                      title={n.title}
+                      subtitle={`${dateStr} · ${stripHtml(n.body).split('\n')[0]}`}
+                      onPress={() => {
+                        setSelectedEntry(n);
+                        setEditorVisible(true);
+                      }}
+                      right={<Chevron />}
+                    />
+                  );
+                })}
               </InsetGroup>
             </View>
 

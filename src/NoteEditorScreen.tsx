@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { RichEditor, type RichEditorHandle } from './RichEditor';
+import { RichEditor, type RichEditorHandle, type EditorState } from './RichEditor';
 import { colors, space } from './theme';
 import type { NoteEntry } from './data';
 import { Icon } from './components';
@@ -37,6 +39,7 @@ function toEditableHTML(body: string) {
 export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const [title, setTitle] = useState(entry?.title || '');
   const [showColors, setShowColors] = useState(false);
+  const [activeFormats, setActiveFormats] = useState<EditorState>({});
   const editorRef = useRef<RichEditorHandle>(null);
 
   const run = (command: string, value?: string) => {
@@ -61,7 +64,10 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.headerButton} hitSlop={8}>
           <Icon name="chevron" color={colors.ink} size={22} />
@@ -94,6 +100,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           ref={editorRef}
           initialHTML={toEditableHTML(entry?.body || '')}
           accent={colors.orange}
+          onStateChange={setActiveFormats}
         />
       </View>
 
@@ -120,21 +127,21 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           contentContainerStyle={styles.toolbarContent}
           keyboardShouldPersistTaps="always"
         >
-          <ToolButton label="B" bold onPress={() => run('bold')} />
-          <ToolButton label="I" italic onPress={() => run('italic')} />
-          <ToolButton label="U" underline onPress={() => run('underline')} />
-          <ToolButton label="S" strike onPress={() => run('strikeThrough')} />
+          <ToolButton label="B" bold isActive={!!activeFormats.bold} onPress={() => run('bold')} />
+          <ToolButton label="I" italic isActive={!!activeFormats.italic} onPress={() => run('italic')} />
+          <ToolButton label="U" underline isActive={!!activeFormats.underline} onPress={() => run('underline')} />
+          <ToolButton label="S" strike isActive={!!activeFormats.strikeThrough} onPress={() => run('strikeThrough')} />
           <Divider />
           <ToolButton label="A-" onPress={() => run('fontSize', '2')} />
           <ToolButton label="A+" onPress={() => run('fontSize', '5')} />
-          <ToolButton label="H1" onPress={() => run('formatBlock', '<h1>')} />
-          <ToolButton label="H2" onPress={() => run('formatBlock', '<h2>')} />
-          <ToolButton label="¶" onPress={() => run('formatBlock', '<p>')} />
+          <ToolButton label="H1" isActive={activeFormats.formatBlock === 'h1'} onPress={() => run('formatBlock', '<h1>')} />
+          <ToolButton label="H2" isActive={activeFormats.formatBlock === 'h2'} onPress={() => run('formatBlock', '<h2>')} />
+          <ToolButton label="¶" isActive={activeFormats.formatBlock === 'p'} onPress={() => run('formatBlock', '<p>')} />
           <Divider />
-          <ToolButton label="•" onPress={() => run('insertUnorderedList')} />
-          <ToolButton label="1." onPress={() => run('insertOrderedList')} />
-          <ToolButton label="❝" onPress={() => run('formatBlock', '<blockquote>')} />
-          <ToolButton label="</>" onPress={() => run('formatBlock', '<pre>')} />
+          <ToolButton label="•" isActive={!!activeFormats.insertUnorderedList} onPress={() => run('insertUnorderedList')} />
+          <ToolButton label="1." isActive={!!activeFormats.insertOrderedList} onPress={() => run('insertOrderedList')} />
+          <ToolButton label="❝" isActive={activeFormats.formatBlock === 'blockquote'} onPress={() => run('formatBlock', '<blockquote>')} />
+          <ToolButton label="</>" isActive={activeFormats.formatBlock === 'pre'} onPress={() => run('formatBlock', '<pre>')} />
           <Divider />
           <ToolButton
             label="A"
@@ -143,7 +150,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -155,6 +162,7 @@ function ToolButton({
   underline,
   strike,
   color,
+  isActive,
 }: {
   label: string;
   onPress: () => void;
@@ -163,11 +171,16 @@ function ToolButton({
   underline?: boolean;
   strike?: boolean;
   color?: string;
+  isActive?: boolean;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={styles.toolButton}
+      activeOpacity={0.7}
+      style={[
+        styles.toolButton,
+        isActive ? { backgroundColor: colors.dim2 } : null
+      ]}
       accessibilityRole="button"
       accessibilityLabel={`Format ${label}`}
     >

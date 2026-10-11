@@ -13,6 +13,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  DeviceEventEmitter,
 } from 'react-native';
 
 import { Icon, TabBar } from './src/components';
@@ -33,7 +34,15 @@ import { colors, space } from './src/theme';
 const TOP_INSET =
   Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 48;
 
-function NavBar({ tab }: { tab: TabKey }) {
+function NavBar({
+  tab,
+  onSettings,
+  onAdd,
+}: {
+  tab: TabKey;
+  onSettings: () => void;
+  onAdd: () => void;
+}) {
   if (tab === 'vault') {
     return (
       <View style={styles.nav}>
@@ -44,7 +53,11 @@ function NavBar({ tab }: { tab: TabKey }) {
         </View>
         <Text style={styles.brand}>Tijori</Text>
         <View style={styles.navRight}>
-          <TouchableOpacity accessibilityLabel="Settings" accessibilityRole="button">
+          <TouchableOpacity
+            accessibilityLabel="Settings"
+            accessibilityRole="button"
+            onPress={onSettings}
+          >
             <Icon name="gear" size={22} color={colors.ink} />
           </TouchableOpacity>
         </View>
@@ -68,7 +81,11 @@ function NavBar({ tab }: { tab: TabKey }) {
       <Text style={styles.navTitle}>{title}</Text>
       <View style={styles.navRight}>
         {showPlus && tab !== 'passwords' ? (
-          <TouchableOpacity accessibilityLabel="Add" accessibilityRole="button">
+          <TouchableOpacity
+            accessibilityLabel="Add"
+            accessibilityRole="button"
+            onPress={onAdd}
+          >
             <Icon name="plus" size={24} color={colors.ink} />
           </TouchableOpacity>
         ) : null}
@@ -149,7 +166,11 @@ function App() {
         <DocumentsScreen onBack={() => setShowDocuments(false)} />
       ) : (
         <>
-          <NavBar tab={tab === 'passwords-health' ? 'passwords' : tab} />
+          <NavBar
+            tab={tab === 'passwords-health' ? 'passwords' : tab}
+            onSettings={() => setTab('settings')}
+            onAdd={() => DeviceEventEmitter.emit('actionAdd')}
+          />
           <View style={styles.content}>
             {tab === 'vault' ? (
               <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />

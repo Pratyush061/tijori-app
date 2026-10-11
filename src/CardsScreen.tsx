@@ -3,6 +3,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,6 +22,7 @@ export function CardsScreen({ onBack }: Props) {
   const [items, setItems] = useState<CardEntry[]>([]);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<CardEntry | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = async () => {
     let data: CardEntry[] = [];
@@ -53,16 +55,22 @@ export function CardsScreen({ onBack }: Props) {
     }
   };
 
+  const filtered = items.filter(c =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.last4.includes(searchQuery)
+  );
+
   return (
     <View style={styles.flex}>
       <View style={styles.nav}>
-        <TouchableOpacity style={styles.navLeft} onPress={onBack}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.navLeft} onPress={onBack}>
           <Icon name="chevron" size={24} color={colors.blue} />
           <Text style={styles.navBackText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.navTitle}>Cards</Text>
         <View style={styles.navRight}>
           <TouchableOpacity
+            activeOpacity={0.7}
             onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}
             accessibilityLabel="Add Card"
             accessibilityRole="button"
@@ -78,6 +86,7 @@ export function CardsScreen({ onBack }: Props) {
             <Text style={styles.emptyTitle}>No cards yet</Text>
             <Text style={styles.emptyHint}>Add your first card to get started.</Text>
             <TouchableOpacity
+              activeOpacity={0.7}
               style={styles.addButton}
               onPress={() => {
                 setSelectedEntry(null);
@@ -89,9 +98,20 @@ export function CardsScreen({ onBack }: Props) {
           </View>
         ) : (
           <>
-            <View style={{ marginTop: space.lg }}>
+            <View style={styles.searchBar}>
+              <Icon name="search" size={20} color={colors.dim} />
+              <TextInput
+                style={[styles.flex, styles.searchText]}
+                placeholder="Search cards"
+                placeholderTextColor={colors.dim}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+
+            <View style={styles.listContainer}>
               <InsetGroup>
-                {items.map((c, i) => (
+                {filtered.map((c, i) => (
                   <ListRow
                     key={c.id}
                     divider={i > 0}
@@ -177,5 +197,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginHorizontal: space.md,
+    marginTop: space.md,
+    paddingVertical: 9,
+    paddingHorizontal: space.md,
+    borderRadius: 11,
+    backgroundColor: 'rgba(118,118,128,0.12)',
+  },
+  searchText: {
+    fontSize: 16,
+    color: colors.dim,
+  },
+  listContainer: {
+    marginTop: space.lg,
   },
 });

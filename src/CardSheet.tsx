@@ -108,7 +108,7 @@ export function CardSheet({
         </View>
 
         {entry && onDelete && (
-          <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={onDelete}>
             <Text style={styles.deleteButtonText}>Delete Card</Text>
           </TouchableOpacity>
         )}
