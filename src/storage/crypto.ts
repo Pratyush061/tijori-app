@@ -16,16 +16,35 @@ export const ENC_MARKER = 'tijori1:';
 const KEY_SIZE_WORDS = 256 / 32;
 const SALT_BYTES = 16;
 const IV_BYTES = 16;
-const PBKDF2_ITERATIONS = 150000;
-const PBKDF2_YIELD_EVERY = 500;
+
+// PBKDF2-HMAC-SHA256 rounds. This is deliberately expensive; it is the main
+// cost of unlocking. Tests override it (see the __TIJORI_PBKDF2_ITERATIONS__
+// hook) so the suite exercises correctness without paying for it.
+const DEFAULT_PBKDF2_ITERATIONS = 150000;
+
+// How many rounds run between yields to the JS event loop. Yielding keeps the
+// UI (and the busy spinner) alive during the KDF; doing it rarely keeps the
+// setTimeout overhead negligible.
+const PBKDF2_YIELD_EVERY = 25000;
 
 export type VaultKey = CryptoJS.lib.WordArray;
 
+function iterations(): number {
+  const override = (
+    globalThis as { __TIJORI_PBKDF2_ITERATIONS__?: number }
+  ).__TIJORI_PBKDF2_ITERATIONS__;
+  return typeof override === 'number' && override > 0
+    ? override
+    : DEFAULT_PBKDF2_ITERATIONS;
+}
+
 /**
- * Generate random bytes only from a cryptographically secure source.
- * index.js loads react-native-get-random-values before app modules, backed by
- * Android's SecureRandom. Refuse to create vault material if that source is
- * unavailable rather than silently falling back to Math.random.
+ * Random bytes from a cryptographically secure source only.
+ *
+ * index.js loads react-native-get-random-values before the app modules, which
+ * backs `crypto.getRandomValues` with Android's SecureRandom; Node/Jest provide
+ * it natively. If that source is missing we refuse rather than silently fall
+ * back to Math.random, which would weaken every key and IV we generate.
  */
 export function randomBytes(nBytes: number): CryptoJS.lib.WordArray {
   const g = globalThis as unknown as {
@@ -33,7 +52,6 @@ export function randomBytes(nBytes: number): CryptoJS.lib.WordArray {
     msCrypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array };
   };
   const source = g.crypto ?? g.msCrypto;
-
   if (!source || typeof source.getRandomValues !== 'function') {
     throw new Error('Secure random number generation is unavailable.');
   }
@@ -41,8 +59,8 @@ export function randomBytes(nBytes: number): CryptoJS.lib.WordArray {
   const buf = new Uint8Array(nBytes);
   source.getRandomValues(buf);
 
-  // Pack bytes explicitly so non-multiples of four do not get padded with
-  // undefined values. WordArray.sigBytes records the exact requested length.
+  // Pack bytes explicitly so a length that is not a multiple of four is not
+  // padded with undefined words; WordArray.sigBytes records the real length.
   const words = new Array<number>(Math.ceil(nBytes / 4)).fill(0);
   for (let i = 0; i < nBytes; i++) {
     words[Math.floor(i / 4)] |= buf[i] << (24 - (i % 4) * 8);
@@ -56,57 +74,59 @@ export function makeSalt(): CryptoJS.lib.WordArray {
 }
 
 /**
- * Synchronous PBKDF2 retained for compatibility and test-vector comparison.
- * Prefer deriveKeyAsync in app flows so the JavaScript thread can process UI
- * work while all 150,000 PBKDF2-HMAC-SHA256 rounds are performed.
+ * Synchronous PBKDF2. Kept for compatibility and for the test that checks the
+ * async implementation produces byte-for-byte the same key.
  */
 export function deriveKey(passcode: string, salt: CryptoJS.lib.WordArray): VaultKey {
   return CryptoJS.PBKDF2(passcode, salt, {
     keySize: KEY_SIZE_WORDS,
-    iterations: PBKDF2_ITERATIONS,
+    iterations: iterations(),
     hasher: CryptoJS.algo.SHA256,
   });
 }
 
-function yieldToUi(): Promise<void> {
+function yieldToEventLoop(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
 /**
- * Incremental PBKDF2-HMAC-SHA256 implementation with the same parameters and
- * byte-for-byte output as CryptoJS.PBKDF2 above. Yielding between chunks keeps
- * Android's JS thread responsive without weakening the 150,000-iteration KDF.
+ * PBKDF2-HMAC-SHA256 with the same parameters and byte-for-byte the same
+ * output as {@link deriveKey}, but yielding to the event loop between chunks of
+ * rounds so the JS thread can keep painting during the derivation.
  */
 export async function deriveKeyAsync(
   passcode: string,
   salt: CryptoJS.lib.WordArray
 ): Promise<VaultKey> {
-  const hmac = CryptoJS.algo.HMAC.create(CryptoJS.algo.SHA256, passcode);
+  const total = iterations();
+  // A fresh HMAC per PRF call is required: crypto-js's HMAC cannot be reused
+  // across messages (reusing one instance silently diverges from standard
+  // PBKDF2 from the third round on). Parsing the key once keeps it cheap.
+  const key = CryptoJS.enc.Utf8.parse(passcode);
+  const prf = (message: CryptoJS.lib.WordArray) =>
+    CryptoJS.algo.HMAC.create(CryptoJS.algo.SHA256, key).finalize(message);
+
   const derivedKey = CryptoJS.lib.WordArray.create();
   const blockIndex = CryptoJS.lib.WordArray.create([1]);
 
   while (derivedKey.words.length < KEY_SIZE_WORDS) {
-    const block = hmac.update(salt).finalize(blockIndex);
-    hmac.reset();
+    // U1 = HMAC(passcode, salt || INT(i))
+    let u = prf(salt.clone().concat(blockIndex));
+    const acc = u.clone();
+    let sinceYield = 0;
 
-    const blockWords = block.words;
-    let intermediate = block.clone();
-
-    for (let iteration = 1; iteration < PBKDF2_ITERATIONS; iteration++) {
-      intermediate = hmac.finalize(intermediate);
-      hmac.reset();
-
-      const intermediateWords = intermediate.words;
-      for (let i = 0; i < blockWords.length; i++) {
-        blockWords[i] ^= intermediateWords[i];
+    for (let i = 1; i < total; i++) {
+      u = prf(u);
+      for (let w = 0; w < acc.words.length; w++) {
+        acc.words[w] ^= u.words[w];
       }
-
-      if (iteration % PBKDF2_YIELD_EVERY === 0) {
-        await yieldToUi();
+      if (++sinceYield >= PBKDF2_YIELD_EVERY) {
+        sinceYield = 0;
+        await yieldToEventLoop();
       }
     }
 
-    derivedKey.concat(block);
+    derivedKey.concat(acc);
     blockIndex.words[0]++;
   }
 

@@ -45,6 +45,8 @@ const FLICK = 0.45;
 const OPEN_SPRING = { damping: 22, stiffness: 210, mass: 0.9 };
 const CLOSE_SPRING = { damping: 26, stiffness: 240, mass: 0.9 };
 const BACKDROP_OPACITY = 0.4;
+// Comfortably below the bottom edge on any device (values are dp).
+const OFFSCREEN = 2000;
 
 export function calculateDestination(
   position: number,
@@ -118,11 +120,12 @@ export function DraggableSheet({
   fullScreen = false,
 }: Props) {
   const [containerHeight, setContainerHeight] = useState(0);
-  const translateY = useSharedValue(9999);
+  const translateY = useSharedValue(OFFSCREEN);
   const scrollOffset = useSharedValue(0);
   const isDraggingSheet = useSharedValue(false);
   const scrollViewRef = useRef<any>(null);
   const closingRef = useRef(false);
+  const openedRef = useRef(false);
 
   // Where the sheet rests when open: a peek of the screen for normal sheets,
   // the very top for full-screen ones.
@@ -156,16 +159,21 @@ export function DraggableSheet({
   }, [onSave]);
 
   // Open: place the sheet just off the bottom edge, then spring it into place.
+  // This must run exactly ONCE per open. `containerHeight` is re-measured when
+  // the keyboard resizes the window, and the old version re-ran this effect on
+  // every change - which slammed the sheet back down and made it "snap".
   useEffect(() => {
-    if (visible && containerHeight > 0) {
-      closingRef.current = false;
-      translateY.value = containerHeight;
-      translateY.value = withSpring(restPosition(containerHeight), OPEN_SPRING);
-    }
     if (!visible) {
-      translateY.value = 9999;
+      openedRef.current = false;
       closingRef.current = false;
+      translateY.value = OFFSCREEN;
+      return;
     }
+    if (openedRef.current || containerHeight <= 0) return;
+    openedRef.current = true;
+    closingRef.current = false;
+    translateY.value = OFFSCREEN;
+    translateY.value = withSpring(restPosition(containerHeight), OPEN_SPRING);
   }, [visible, containerHeight, restPosition, translateY]);
 
   const panGesture = Gesture.Pan()
