@@ -22,10 +22,10 @@ const PBKDF2_YIELD_EVERY = 500;
 export type VaultKey = CryptoJS.lib.WordArray;
 
 /**
- * Best-effort cryptographically secure bytes. When the platform exposes
- * `crypto.getRandomValues` (provided on device by react-native-get-random-values,
- * and present natively under Node/Jest) we use it; otherwise we fall back to
- * Math.random so the app still functions rather than crashing.
+ * Generate random bytes only from a cryptographically secure source.
+ * index.js loads react-native-get-random-values before app modules, backed by
+ * Android's SecureRandom. Refuse to create vault material if that source is
+ * unavailable rather than silently falling back to Math.random.
  */
 export function randomBytes(nBytes: number): CryptoJS.lib.WordArray {
   const g = globalThis as unknown as {
@@ -33,20 +33,19 @@ export function randomBytes(nBytes: number): CryptoJS.lib.WordArray {
     msCrypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array };
   };
   const source = g.crypto ?? g.msCrypto;
-  const words: number[] = [];
 
-  if (source && typeof source.getRandomValues === 'function') {
-    const buf = new Uint8Array(nBytes);
-    source.getRandomValues(buf);
-    for (let i = 0; i < nBytes; i += 4) {
-      words.push(
-        ((buf[i] << 24) | (buf[i + 1] << 16) | (buf[i + 2] << 8) | buf[i + 3]) >>> 0
-      );
-    }
-  } else {
-    for (let i = 0; i < nBytes; i += 4) {
-      words.push(Math.floor(Math.random() * 0x100000000) >>> 0);
-    }
+  if (!source || typeof source.getRandomValues !== 'function') {
+    throw new Error('Secure random number generation is unavailable.');
+  }
+
+  const buf = new Uint8Array(nBytes);
+  source.getRandomValues(buf);
+
+  // Pack bytes explicitly so non-multiples of four do not get padded with
+  // undefined values. WordArray.sigBytes records the exact requested length.
+  const words = new Array<number>(Math.ceil(nBytes / 4)).fill(0);
+  for (let i = 0; i < nBytes; i++) {
+    words[Math.floor(i / 4)] |= buf[i] << (24 - (i % 4) * 8);
   }
 
   return CryptoJS.lib.WordArray.create(words, nBytes);
