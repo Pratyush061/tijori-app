@@ -63,6 +63,8 @@ export function NoteSheet({
       onClose={onClose}
       onSave={handleSave}
       title={entry ? 'Edit Note' : 'New Note'}
+      dragEnabled={false}
+      fullScreen={true}
     >
       <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>

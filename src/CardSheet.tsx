@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   Text,
   View,
 } from 'react-native';
-
 import type { CardEntry } from './data';
-import { DraggableSheet } from './DraggableSheet';
+import { DraggableSheet, SheetScrollView } from './DraggableSheet';
 import { colors, radius, space } from './theme';
 
 type Props = {
@@ -72,7 +70,7 @@ export function CardSheet({
       onSave={handleSave}
       title={entry ? 'Edit Card' : 'New Card'}
     >
-      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      <SheetScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <TextInput
             style={[styles.input, styles.inputBorder]}
@@ -114,7 +112,7 @@ export function CardSheet({
             <Text style={styles.deleteButtonText}>Delete Card</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </SheetScrollView>
     </DraggableSheet>
   );
 }

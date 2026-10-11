@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -12,7 +11,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 
 import { Icon } from './components';
 import type { PasswordEntry } from './data';
-import { DraggableSheet } from './DraggableSheet';
+import { DraggableSheet, SheetScrollView } from './DraggableSheet';
 import { colors, radius, space } from './theme';
 
 const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Shopping', 'Other'];
@@ -137,7 +136,7 @@ export function PasswordSheet({
       onSave={handleSave}
       title={entry ? 'Edit Password' : 'New Password'}
     >
-      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      <SheetScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <TextInput
             style={[styles.input, styles.inputBorder]}
@@ -269,7 +268,7 @@ export function PasswordSheet({
             <Text style={styles.deleteButtonText}>Delete Password</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </SheetScrollView>
     </DraggableSheet>
   );
 }
