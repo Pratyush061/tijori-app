@@ -22,7 +22,7 @@ import {
 import type { IconName } from './components';
 import { birthdays, passwords, getDaysAway, formatBirthdayDate } from './data';
 import type { PasswordEntry, Birthday } from './data';
-import { passwordStorage, birthdayStorage, noteStorage, cardStorage } from './storage/asyncStorage';
+import { passwordStorage, birthdayStorage, noteStorage, cardStorage, documentStorage } from './storage/asyncStorage';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
@@ -62,6 +62,7 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
 
 type VaultScreenProps = {
   onOpenCards?: () => void;
+  onOpenDocuments?: () => void;
   onTabSelect?: (tab: any) => void;
 };
 
@@ -74,7 +75,7 @@ type RecentItem = {
   ts: number;
 };
 
-export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
+export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: VaultScreenProps) {
   const [stats, setStats] = React.useState({
     totalItems: 0,
     upcomingBdays: 0,
@@ -89,17 +90,19 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
     birthdays: 0,
     notes: 0,
     cards: 0,
+    documents: 0,
   });
 
   const [recents, setRecents] = React.useState<RecentItem[]>([]);
 
   React.useEffect(() => {
     const load = async () => {
-      const [ps, bs, ns, cs] = await Promise.all([
+      const [ps, bs, ns, cs, ds] = await Promise.all([
         passwordStorage.list(),
         birthdayStorage.list(),
         noteStorage.list(),
         cardStorage.list(),
+        documentStorage.list(),
       ]);
 
       const extractTs = (id: string) => {
@@ -160,7 +163,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
       const alerts = weakPasswords.length;
 
       setStats({
-        totalItems: ps.length + bs.length + ns.length + cs.length,
+        totalItems: ps.length + bs.length + ns.length + cs.length + ds.length,
         upcomingBdays: upcoming,
         alerts: alerts,
       });
@@ -170,6 +173,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         birthdays: bs.length,
         notes: ns.length,
         cards: cs.length,
+        documents: ds.length,
       });
 
       const allItems: RecentItem[] = [
@@ -177,6 +181,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
         ...bs.map(b => ({ id: b.id, title: b.name, subtitle: formatBirthdayDate(b.date), initial: b.initial, color: b.color, ts: extractTs(b.id) })),
         ...ns.map(n => ({ id: n.id, title: n.title, subtitle: 'Note', initial: n.initial, color: n.color, ts: extractTs(n.id) })),
         ...cs.map(c => ({ id: c.id, title: c.name, subtitle: `•••• ${c.last4}`, initial: c.initial, color: c.color, ts: extractTs(c.id) })),
+        ...ds.map(d => ({ id: d.id, title: d.title, subtitle: d.type, initial: d.initial, color: d.color, ts: extractTs(d.id) })),
       ];
 
       allItems.sort((a, b) => b.ts - a.ts);
@@ -191,6 +196,7 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
     { label: 'Birthdays', count: `${catCounts.birthdays} items`, icon: 'cake' as IconName, color: colors.pink },
     { label: 'Notes', count: `${catCounts.notes} items`, icon: 'note' as IconName, color: colors.orange },
     { label: 'Cards', count: `${catCounts.cards} items`, icon: 'card' as IconName, color: colors.green },
+    { label: 'Documents', count: `${catCounts.documents} items`, icon: 'document' as IconName, color: colors.indigo },
   ];
 
   return (
@@ -262,6 +268,8 @@ export function VaultScreen({ onOpenCards, onTabSelect }: VaultScreenProps) {
             onPress={() => {
               if (c.label === 'Cards') {
                 onOpenCards?.();
+              } else if (c.label === 'Documents') {
+                onOpenDocuments?.();
               } else {
                 onTabSelect?.(c.label.toLowerCase());
               }
@@ -419,7 +427,11 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
   return (
     <View style={styles.flex}>
       <View style={{ alignItems: 'flex-end', paddingHorizontal: space.xl, marginTop: -35, zIndex: 10, elevation: 10, paddingBottom: 10 }}>
-        <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+        <TouchableOpacity
+          onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}
+          accessibilityLabel="Add Password"
+          accessibilityRole="button"
+        >
           <Icon name="plus" size={24} color={colors.ink} />
         </TouchableOpacity>
       </View>
@@ -464,59 +476,77 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
         ))}
       </ScrollView>
 
-      {healthAlerts.length > 0 && !showHealthAlertsOnly && (
+      {filteredItems.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No passwords yet</Text>
+          <Text style={styles.emptyHint}>Add your first password to get started.</Text>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => {
+              setSelectedEntry(null);
+              setSheetVisible(true);
+            }}
+          >
+            <Text style={styles.addButtonText}>Add Password</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
         <>
-          <SectionLabel>Security</SectionLabel>
+          {healthAlerts.length > 0 && !showHealthAlertsOnly && (
+            <>
+              <SectionLabel>Security</SectionLabel>
+              <InsetGroup>
+                <ListRow
+                  divider={false}
+                  leading={
+                    <View
+                      style={[styles.alertIcon, { backgroundColor: colors.orange }]}
+                    >
+                      <Icon name="shield" size={20} color="#FFFFFF" />
+                    </View>
+                  }
+                  title={`${healthAlerts.length} ${healthAlerts.length === 1 ? 'password needs' : 'passwords need'} attention`}
+                  subtitle="Weak, reused or older than a year"
+                  right={<Chevron />}
+                  onPress={() => setShowHealthAlertsOnly(true)}
+                />
+              </InsetGroup>
+            </>
+          )}
+
+          {showHealthAlertsOnly && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: space.lg }}>
+              <SectionLabel>Needs Attention</SectionLabel>
+              <TouchableOpacity onPress={() => setShowHealthAlertsOnly(false)}>
+                <Text style={{ color: colors.blue, fontSize: 14 }}>Show All</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!showHealthAlertsOnly && <SectionLabel>All items</SectionLabel>}
           <InsetGroup>
-            <ListRow
-              divider={false}
-              leading={
-                <View
-                  style={[styles.alertIcon, { backgroundColor: colors.orange }]}
-                >
-                  <Icon name="shield" size={20} color="#FFFFFF" />
-                </View>
-              }
-              title={`${healthAlerts.length} ${healthAlerts.length === 1 ? 'password needs' : 'passwords need'} attention`}
-              subtitle="Weak, reused or older than a year"
-              right={<Chevron />}
-              onPress={() => setShowHealthAlertsOnly(true)}
-            />
+            {filteredItems.map((p, i) => (
+              <ListRow
+                key={p.id}
+                divider={i > 0}
+                leading={<Monogram label={p.initial} color={p.color} />}
+                title={p.name}
+                subtitle={[p.subtitle, p.category].filter(Boolean).join(' • ')}
+                onPress={() => {
+                  setSelectedEntry(p);
+                  setSheetVisible(true);
+                }}
+                right={
+                  <View style={styles.rowTail}>
+                    <Text style={styles.dots}>••••••</Text>
+                    <Chevron />
+                  </View>
+                }
+              />
+            ))}
           </InsetGroup>
         </>
       )}
-
-      {showHealthAlertsOnly && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: space.lg }}>
-          <SectionLabel>Needs Attention</SectionLabel>
-          <TouchableOpacity onPress={() => setShowHealthAlertsOnly(false)}>
-            <Text style={{ color: colors.blue, fontSize: 14 }}>Show All</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {!showHealthAlertsOnly && <SectionLabel>All items</SectionLabel>}
-      <InsetGroup>
-        {filteredItems.map((p, i) => (
-          <ListRow
-            key={p.id}
-            divider={i > 0}
-            leading={<Monogram label={p.initial} color={p.color} />}
-            title={p.name}
-            subtitle={[p.subtitle, p.category].filter(Boolean).join(' • ')}
-            onPress={() => {
-              setSelectedEntry(p);
-              setSheetVisible(true);
-            }}
-            right={
-              <View style={styles.rowTail}>
-                <Text style={styles.dots}>••••••</Text>
-                <Chevron />
-              </View>
-            }
-          />
-        ))}
-      </InsetGroup>
     </ScrollView>
       <PasswordSheet
         visible={sheetVisible}
@@ -609,6 +639,21 @@ export function BirthdaysScreen() {
         </View>
 
         {viewMode === 'list' ? (
+          items.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No birthdays yet</Text>
+              <Text style={styles.emptyHint}>Add your first birthday to get started.</Text>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => {
+                  setSelectedEntry(null);
+                  setSheetVisible(true);
+                }}
+              >
+                <Text style={styles.addButtonText}>Add Birthday</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
           <>
             {next && (
               <TouchableOpacity
@@ -668,6 +713,7 @@ export function BirthdaysScreen() {
               <Text style={styles.wishButtonText}>Add Birthday</Text>
             </TouchableOpacity>
           </>
+          )
         ) : (
           <>
             <Calendar
@@ -796,6 +842,35 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   scroll: { paddingBottom: 32 },
+
+  empty: {
+    alignItems: 'center',
+    marginTop: 64,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.dim,
+    marginBottom: space.sm,
+  },
+  emptyHint: {
+    fontSize: 15,
+    color: colors.dim,
+    textAlign: 'center',
+    marginBottom: space.lg,
+    paddingHorizontal: space.xl,
+  },
+  addButton: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   lock: {
     flex: 1,

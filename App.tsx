@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Platform, StatusBar, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 
 import { Icon, TabBar } from './src/components';
 import type { TabKey } from './src/components';
@@ -34,7 +34,9 @@ function NavBar({ tab }: { tab: TabKey }) {
         </View>
         <Text style={styles.brand}>Tijori</Text>
         <View style={styles.navRight}>
-          <Icon name="gear" size={22} color={colors.ink} />
+          <TouchableOpacity accessibilityLabel="Settings" accessibilityRole="button">
+            <Icon name="gear" size={22} color={colors.ink} />
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -55,7 +57,11 @@ function NavBar({ tab }: { tab: TabKey }) {
       <View style={styles.navLeft} />
       <Text style={styles.navTitle}>{title}</Text>
       <View style={styles.navRight}>
-        {showPlus && tab !== 'passwords' ? <Icon name="plus" size={24} color={colors.ink} /> : null}
+        {showPlus && tab !== 'passwords' ? (
+          <TouchableOpacity accessibilityLabel="Add" accessibilityRole="button">
+            <Icon name="plus" size={24} color={colors.ink} />
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -78,11 +84,13 @@ function CurrentScreen({ tab }: { tab: TabKey }) {
 }
 
 import { CardsScreen } from './src/CardsScreen';
+import { DocumentsScreen } from './src/DocumentsScreen';
 
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [tab, setTab] = useState<TabKey | 'passwords-health'>('vault');
   const [showCards, setShowCards] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
 
   return (
     <View style={styles.root}>
@@ -91,12 +99,14 @@ function App() {
       {unlocked ? (
         showCards ? (
           <CardsScreen onBack={() => setShowCards(false)} />
+        ) : showDocuments ? (
+          <DocumentsScreen onBack={() => setShowDocuments(false)} />
         ) : (
           <>
             <NavBar tab={tab === 'passwords-health' ? 'passwords' : tab} />
             <View style={styles.content}>
               {tab === 'vault' ? (
-                <VaultScreen onOpenCards={() => setShowCards(true)} onTabSelect={setTab} />
+                <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
               ) : tab === 'passwords-health' ? (
                 <PasswordsScreen initialShowHealthAlerts={true} />
               ) : (

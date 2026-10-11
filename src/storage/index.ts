@@ -33,3 +33,13 @@ export interface CardStorage {
   update(id: string, entry: Partial<CardEntry>): Promise<CardEntry>;
   delete(id: string): Promise<void>;
 }
+
+import type { DocumentEntry } from '../data';
+
+export interface DocumentStorage {
+  list(): Promise<DocumentEntry[]>;
+  get(id: string): Promise<DocumentEntry | null>;
+  create(entry: Omit<DocumentEntry, 'id'>): Promise<DocumentEntry>;
+  update(id: string, entry: Partial<DocumentEntry>): Promise<DocumentEntry>;
+  delete(id: string): Promise<void>;
+}

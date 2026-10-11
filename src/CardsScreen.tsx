@@ -57,7 +57,11 @@ export function CardsScreen({ onBack }: Props) {
         </TouchableOpacity>
         <Text style={styles.navTitle}>Cards</Text>
         <View style={styles.navRight}>
-          <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+          <TouchableOpacity
+            onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}
+            accessibilityLabel="Add Card"
+            accessibilityRole="button"
+          >
             <Icon name="plus" size={24} color={colors.ink} />
           </TouchableOpacity>
         </View>
@@ -67,6 +71,7 @@ export function CardsScreen({ onBack }: Props) {
         {items.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No cards yet</Text>
+            <Text style={styles.emptyHint}>Add your first card to get started.</Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => {
@@ -148,7 +153,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.dim,
+    marginBottom: space.sm,
+  },
+  emptyHint: {
+    fontSize: 15,
+    color: colors.dim,
+    textAlign: 'center',
     marginBottom: space.lg,
+    paddingHorizontal: space.xl,
   },
   addButton: {
     backgroundColor: colors.gold,
