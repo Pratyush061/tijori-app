@@ -4,7 +4,7 @@
  * @format
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 
 import { Icon, TabBar } from './src/components';
@@ -18,6 +18,8 @@ import {
   serifFont,
 } from './src/screens';
 import { NotesScreen } from './src/NotesScreen';
+import { PasscodeSetupScreen } from './src/PasscodeSetupScreen';
+import { isVaultInitialized, unlockVault } from './src/storage/secureStore';
 import { colors, space } from './src/theme';
 
 const TOP_INSET =
@@ -87,38 +89,61 @@ import { CardsScreen } from './src/CardsScreen';
 import { DocumentsScreen } from './src/DocumentsScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+type Phase = 'loading' | 'setup' | 'locked' | 'unlocked';
+
 function App() {
-  const [unlocked, setUnlocked] = useState(false);
+  const [phase, setPhase] = useState<Phase>('loading');
   const [tab, setTab] = useState<TabKey | 'passwords-health'>('vault');
   const [showCards, setShowCards] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+
+  // Decide on first render whether the vault has been set up yet, so the user
+  // sees either the create-passcode screen or the unlock screen.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const initialized = await isVaultInitialized();
+      if (alive) setPhase(initialized ? 'locked' : 'setup');
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleUnlock = async (passcode: string) => {
+    const ok = await unlockVault(passcode);
+    if (ok) setPhase('unlocked');
+    return ok;
+  };
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.inset} />
-      {unlocked ? (
-        showCards ? (
-          <CardsScreen onBack={() => setShowCards(false)} />
-        ) : showDocuments ? (
-          <DocumentsScreen onBack={() => setShowDocuments(false)} />
-        ) : (
-          <>
-            <NavBar tab={tab === 'passwords-health' ? 'passwords' : tab} />
-            <View style={styles.content}>
-              {tab === 'vault' ? (
-                <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
-              ) : tab === 'passwords-health' ? (
-                <PasswordsScreen initialShowHealthAlerts={true} />
-              ) : (
-                <CurrentScreen tab={tab} />
-              )}
-            </View>
-            <TabBar active={tab === 'passwords-health' ? 'passwords' : tab} onChange={setTab as any} />
-          </>
-        )
+      {phase === 'loading' ? (
+        <View style={styles.content} />
+      ) : phase === 'setup' ? (
+        <PasscodeSetupScreen onDone={() => setPhase('unlocked')} />
+      ) : phase === 'locked' ? (
+        <LockScreen onUnlock={handleUnlock} />
+      ) : showCards ? (
+        <CardsScreen onBack={() => setShowCards(false)} />
+      ) : showDocuments ? (
+        <DocumentsScreen onBack={() => setShowDocuments(false)} />
       ) : (
-        <LockScreen onUnlock={() => setUnlocked(true)} />
+        <>
+          <NavBar tab={tab === 'passwords-health' ? 'passwords' : tab} />
+          <View style={styles.content}>
+            {tab === 'vault' ? (
+              <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
+            ) : tab === 'passwords-health' ? (
+              <PasswordsScreen initialShowHealthAlerts={true} />
+            ) : (
+              <CurrentScreen tab={tab} />
+            )}
+          </View>
+          <TabBar active={tab === 'passwords-health' ? 'passwords' : tab} onChange={setTab as any} />
+        </>
       )}
     </GestureHandlerRootView>
   );

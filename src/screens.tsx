@@ -20,9 +20,10 @@ import {
   SectionLabel,
 } from './components';
 import type { IconName } from './components';
-import { birthdays, passwords, getDaysAway, formatBirthdayDate } from './data';
-import type { PasswordEntry, Birthday } from './data';
+import { getDaysAway, formatBirthdayDate } from './data';
+import type { PasswordEntry, Birthday, NoteEntry, CardEntry, DocumentEntry } from './data';
 import { passwordStorage, birthdayStorage, noteStorage, cardStorage, documentStorage } from './storage/asyncStorage';
+import { changePasscode } from './storage/secureStore';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
@@ -36,7 +37,26 @@ export const serifFont = Platform.select({
 
 /* ------------------------------------------------------------------- lock */
 
-export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
+export function LockScreen({
+  onUnlock,
+}: {
+  onUnlock: (passcode: string) => Promise<boolean>;
+}) {
+  const [passcode, setPasscode] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const submit = async () => {
+    if (busy || passcode.length === 0) return;
+    setBusy(true);
+    const ok = await onUnlock(passcode);
+    if (!ok) {
+      setBusy(false);
+      setError('Incorrect passcode');
+      setPasscode('');
+    }
+  };
+
   return (
     <View style={styles.lock}>
       <View style={styles.lockBadge}>
@@ -45,15 +65,35 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       <Text style={styles.lockTitle}>Tijori</Text>
       <Text style={styles.lockCaption}>Your private locker</Text>
 
+      <TextInput
+        style={styles.lockInput}
+        placeholder="Passcode"
+        placeholderTextColor={colors.dim}
+        value={passcode}
+        onChangeText={text => {
+          setPasscode(text);
+          if (error) setError(null);
+        }}
+        secureTextEntry
+        keyboardType="number-pad"
+        maxLength={8}
+        accessibilityLabel="Passcode"
+        onSubmitEditing={submit}
+      />
+
+      {error ? <Text style={styles.lockError}>{error}</Text> : null}
+
       <TouchableOpacity
         style={styles.lockButton}
         activeOpacity={0.85}
-        onPress={onUnlock}
+        onPress={submit}
+        disabled={busy}
+        accessibilityLabel="Unlock"
+        accessibilityRole="button"
       >
         <Icon name="shield" size={19} color="#FFFFFF" />
-        <Text style={styles.lockButtonText}>Unlock with Face ID</Text>
+        <Text style={styles.lockButtonText}>{busy ? 'Unlocking...' : 'Unlock'}</Text>
       </TouchableOpacity>
-      <Text style={styles.lockPasscode}>Enter Passcode</Text>
     </View>
   );
 }
@@ -97,13 +137,22 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
 
   React.useEffect(() => {
     const load = async () => {
-      const [ps, bs, ns, cs, ds] = await Promise.all([
-        passwordStorage.list(),
-        birthdayStorage.list(),
-        noteStorage.list(),
-        cardStorage.list(),
-        documentStorage.list(),
-      ]);
+      let ps: PasswordEntry[] = [];
+      let bs: Birthday[] = [];
+      let ns: NoteEntry[] = [];
+      let cs: CardEntry[] = [];
+      let ds: DocumentEntry[] = [];
+      try {
+        ([ps, bs, ns, cs, ds] = await Promise.all([
+          passwordStorage.list(),
+          birthdayStorage.list(),
+          noteStorage.list(),
+          cardStorage.list(),
+          documentStorage.list(),
+        ]));
+      } catch (e) {
+        console.warn('Failed to load vault data', e);
+      }
 
       const extractTs = (id: string) => {
         const match = id.match(/^(\d+)/);
@@ -324,19 +373,11 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
   }, [initialShowHealthAlerts]);
 
   const loadItems = async () => {
-    let stored = await passwordStorage.list();
-    if (stored.length === 0) {
-      // Seed with sample data initially if empty
-      for (const p of passwords) {
-        await passwordStorage.create({
-          name: p.name,
-          subtitle: p.subtitle,
-          color: p.color,
-          initial: p.initial,
-          category: p.category,
-        });
-      }
+    let stored: PasswordEntry[] = [];
+    try {
       stored = await passwordStorage.list();
+    } catch (e) {
+      console.warn('Failed to load passwords', e);
     }
     setItems(stored);
 
@@ -569,19 +610,11 @@ export function BirthdaysScreen() {
   const [selectedDate, setSelectedDate] = React.useState<string | undefined>(undefined);
 
   const loadItems = async () => {
-    let stored = await birthdayStorage.list();
-    if (stored.length === 0) {
-      for (const b of birthdays) {
-        await birthdayStorage.create({
-          name: b.name,
-          date: b.date,
-          includeYear: b.includeYear,
-          color: b.color,
-          initial: b.initial,
-          note: b.note,
-        });
-      }
+    let stored: Birthday[] = [];
+    try {
       stored = await birthdayStorage.list();
+    } catch (e) {
+      console.warn('Failed to load birthdays', e);
     }
     setItems(stored);
   };
@@ -769,7 +802,44 @@ export function BirthdaysScreen() {
 /* --------------------------------------------------------------- settings */
 
 export function SettingsScreen() {
-  const [faceId, setFaceId] = React.useState(true);
+  const [changing, setChanging] = React.useState(false);
+  const [current, setCurrent] = React.useState('');
+  const [next, setNext] = React.useState('');
+  const [confirm, setConfirm] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [message, setMessage] = React.useState<{
+    text: string;
+    ok: boolean;
+  } | null>(null);
+
+  const reset = () => {
+    setCurrent('');
+    setNext('');
+    setConfirm('');
+    setMessage(null);
+  };
+
+  const submitChange = async () => {
+    if (busy) return;
+    if (next.length < 4) {
+      setMessage({ text: 'New passcode must be at least 4 digits.', ok: false });
+      return;
+    }
+    if (next !== confirm) {
+      setMessage({ text: 'The new passcodes do not match.', ok: false });
+      return;
+    }
+    setBusy(true);
+    const ok = await changePasscode(current, next);
+    setBusy(false);
+    if (!ok) {
+      setMessage({ text: 'Current passcode is incorrect.', ok: false });
+      return;
+    }
+    setMessage({ text: 'Passcode changed.', ok: true });
+    setChanging(false);
+    reset();
+  };
 
   return (
     <ScrollView
@@ -791,20 +861,87 @@ export function SettingsScreen() {
 
       <SectionLabel>Security</SectionLabel>
       <InsetGroup>
-        <KeyValueRow label="Face ID unlock" divider={false}>
-          <Switch
-            value={faceId}
-            onValueChange={setFaceId}
-            trackColor={{ true: colors.green }}
-          />
+        <KeyValueRow label="Passcode lock" divider={false}>
+          <Text style={styles.krowValue}>On</Text>
         </KeyValueRow>
         <KeyValueRow label="Auto-lock">
           <Text style={styles.krowValue}>Immediately</Text>
         </KeyValueRow>
-        <KeyValueRow label="Change passcode">
+        <TouchableOpacity
+          activeOpacity={0.6}
+          onPress={() => {
+            reset();
+            setChanging(v => !v);
+          }}
+          accessibilityLabel="Change passcode"
+          accessibilityRole="button"
+          style={styles.settingsRow}
+        >
+          <Text style={styles.settingsRowLabel}>Change passcode</Text>
           <Chevron />
-        </KeyValueRow>
+        </TouchableOpacity>
       </InsetGroup>
+
+      {changing && (
+        <InsetGroup>
+          <View style={styles.changeForm}>
+            <TextInput
+              style={styles.changeInput}
+              placeholder="Current passcode"
+              placeholderTextColor={colors.dim}
+              value={current}
+              onChangeText={setCurrent}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={8}
+              accessibilityLabel="Current passcode"
+            />
+            <TextInput
+              style={styles.changeInput}
+              placeholder="New passcode"
+              placeholderTextColor={colors.dim}
+              value={next}
+              onChangeText={setNext}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={8}
+              accessibilityLabel="New passcode"
+            />
+            <TextInput
+              style={styles.changeInput}
+              placeholder="Confirm new passcode"
+              placeholderTextColor={colors.dim}
+              value={confirm}
+              onChangeText={setConfirm}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={8}
+              accessibilityLabel="Confirm new passcode"
+            />
+            {message ? (
+              <Text
+                style={[
+                  styles.changeMessage,
+                  message.ok ? styles.changeOk : styles.changeError,
+                ]}
+              >
+                {message.text}
+              </Text>
+            ) : null}
+            <TouchableOpacity
+              style={styles.changeButton}
+              onPress={submitChange}
+              disabled={busy}
+              accessibilityLabel="Save new passcode"
+              accessibilityRole="button"
+            >
+              <Text style={styles.changeButtonText}>
+                {busy ? 'Saving...' : 'Save passcode'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </InsetGroup>
+      )}
 
       <SectionLabel>Data</SectionLabel>
       <InsetGroup>
@@ -861,6 +998,52 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space.lg,
+    paddingVertical: 13,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+  },
+  settingsRowLabel: {
+    fontSize: 15,
+    color: colors.ink,
+  },
+  changeForm: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  changeInput: {
+    fontSize: 16,
+    color: colors.ink,
+    paddingVertical: 10,
+    paddingHorizontal: space.md,
+    borderRadius: 10,
+    backgroundColor: 'rgba(118,118,128,0.12)',
+  },
+  changeMessage: {
+    fontSize: 13,
+  },
+  changeOk: {
+    color: colors.green,
+  },
+  changeError: {
+    color: colors.pink,
+  },
+  changeButton: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  changeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   lock: {
     flex: 1,
     alignItems: 'center',
@@ -910,11 +1093,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  lockPasscode: {
+  lockInput: {
     position: 'absolute',
-    bottom: 88,
-    fontSize: 14,
-    color: colors.dim,
+    bottom: 190,
+    width: 220,
+    textAlign: 'center',
+    fontSize: 22,
+    letterSpacing: 8,
+    color: colors.ink,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.dim2,
+  },
+  lockError: {
+    position: 'absolute',
+    bottom: 168,
+    fontSize: 13,
+    color: colors.pink,
   },
 
   bigTitleWrap: {

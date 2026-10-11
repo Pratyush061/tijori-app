@@ -1,6 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PasswordEntry, Birthday, NoteEntry, CardEntry, DocumentEntry } from '../data';
 import type { PasswordStorage, BirthdayStorage, NoteStorage, CardStorage, DocumentStorage } from './index';
+import { randomId } from './crypto';
+import { secureGet, secureSet } from './secureStore';
 
 const STORAGE_KEY = '@tijori_passwords';
 const BIRTHDAY_STORAGE_KEY = '@tijori_birthdays';
@@ -8,15 +9,13 @@ const NOTE_STORAGE_KEY = '@tijori_notes';
 const CARD_STORAGE_KEY = '@tijori_cards';
 const DOCUMENT_STORAGE_KEY = '@tijori_documents';
 
+// Every value goes through the encrypted store. Reads of legacy plaintext are
+// upgraded to ciphertext the next time the record is written.
+
 export class AsyncStoragePasswordStorage implements PasswordStorage {
   async list(): Promise<PasswordEntry[]> {
-    try {
-      const json = await AsyncStorage.getItem(STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    } catch (e) {
-      console.error('Failed to load passwords', e);
-      return [];
-    }
+    const json = await secureGet(STORAGE_KEY);
+    return json ? JSON.parse(json) : [];
   }
 
   async get(id: string): Promise<PasswordEntry | null> {
@@ -26,12 +25,9 @@ export class AsyncStoragePasswordStorage implements PasswordStorage {
 
   async create(entry: Omit<PasswordEntry, 'id'>): Promise<PasswordEntry> {
     const list = await this.list();
-    const newEntry: PasswordEntry = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    };
+    const newEntry: PasswordEntry = { ...entry, id: randomId() };
     list.push(newEntry);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    await secureSet(STORAGE_KEY, JSON.stringify(list));
     return newEntry;
   }
 
@@ -43,14 +39,14 @@ export class AsyncStoragePasswordStorage implements PasswordStorage {
     }
     const updatedEntry = { ...list[index], ...updates };
     list[index] = updatedEntry;
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    await secureSet(STORAGE_KEY, JSON.stringify(list));
     return updatedEntry;
   }
 
   async delete(id: string): Promise<void> {
     const list = await this.list();
     const filteredList = list.filter((p) => p.id !== id);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filteredList));
+    await secureSet(STORAGE_KEY, JSON.stringify(filteredList));
   }
 }
 
@@ -58,13 +54,8 @@ export const passwordStorage = new AsyncStoragePasswordStorage();
 
 export class AsyncStorageBirthdayStorage implements BirthdayStorage {
   async list(): Promise<Birthday[]> {
-    try {
-      const json = await AsyncStorage.getItem(BIRTHDAY_STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    } catch (e) {
-      console.error('Failed to load birthdays', e);
-      return [];
-    }
+    const json = await secureGet(BIRTHDAY_STORAGE_KEY);
+    return json ? JSON.parse(json) : [];
   }
 
   async get(id: string): Promise<Birthday | null> {
@@ -74,12 +65,9 @@ export class AsyncStorageBirthdayStorage implements BirthdayStorage {
 
   async create(entry: Omit<Birthday, 'id'>): Promise<Birthday> {
     const list = await this.list();
-    const newEntry: Birthday = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    };
+    const newEntry: Birthday = { ...entry, id: randomId() };
     list.push(newEntry);
-    await AsyncStorage.setItem(BIRTHDAY_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(BIRTHDAY_STORAGE_KEY, JSON.stringify(list));
     return newEntry;
   }
 
@@ -91,14 +79,14 @@ export class AsyncStorageBirthdayStorage implements BirthdayStorage {
     }
     const updatedEntry = { ...list[index], ...updates };
     list[index] = updatedEntry;
-    await AsyncStorage.setItem(BIRTHDAY_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(BIRTHDAY_STORAGE_KEY, JSON.stringify(list));
     return updatedEntry;
   }
 
   async delete(id: string): Promise<void> {
     const list = await this.list();
     const filteredList = list.filter((b) => b.id !== id);
-    await AsyncStorage.setItem(BIRTHDAY_STORAGE_KEY, JSON.stringify(filteredList));
+    await secureSet(BIRTHDAY_STORAGE_KEY, JSON.stringify(filteredList));
   }
 }
 
@@ -106,13 +94,8 @@ export const birthdayStorage = new AsyncStorageBirthdayStorage();
 
 export class AsyncStorageNoteStorage implements NoteStorage {
   async list(): Promise<NoteEntry[]> {
-    try {
-      const json = await AsyncStorage.getItem(NOTE_STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    } catch (e) {
-      console.error('Failed to load notes', e);
-      return [];
-    }
+    const json = await secureGet(NOTE_STORAGE_KEY);
+    return json ? JSON.parse(json) : [];
   }
 
   async get(id: string): Promise<NoteEntry | null> {
@@ -122,12 +105,9 @@ export class AsyncStorageNoteStorage implements NoteStorage {
 
   async create(entry: Omit<NoteEntry, 'id'>): Promise<NoteEntry> {
     const list = await this.list();
-    const newEntry: NoteEntry = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    };
+    const newEntry: NoteEntry = { ...entry, id: randomId() };
     list.push(newEntry);
-    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(NOTE_STORAGE_KEY, JSON.stringify(list));
     return newEntry;
   }
 
@@ -139,14 +119,14 @@ export class AsyncStorageNoteStorage implements NoteStorage {
     }
     const updatedEntry = { ...list[index], ...updates };
     list[index] = updatedEntry;
-    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(NOTE_STORAGE_KEY, JSON.stringify(list));
     return updatedEntry;
   }
 
   async delete(id: string): Promise<void> {
     const list = await this.list();
     const filteredList = list.filter((n) => n.id !== id);
-    await AsyncStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(filteredList));
+    await secureSet(NOTE_STORAGE_KEY, JSON.stringify(filteredList));
   }
 }
 
@@ -154,13 +134,8 @@ export const noteStorage = new AsyncStorageNoteStorage();
 
 export class AsyncStorageCardStorage implements CardStorage {
   async list(): Promise<CardEntry[]> {
-    try {
-      const json = await AsyncStorage.getItem(CARD_STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    } catch (e) {
-      console.error('Failed to load cards', e);
-      return [];
-    }
+    const json = await secureGet(CARD_STORAGE_KEY);
+    return json ? JSON.parse(json) : [];
   }
 
   async get(id: string): Promise<CardEntry | null> {
@@ -170,12 +145,9 @@ export class AsyncStorageCardStorage implements CardStorage {
 
   async create(entry: Omit<CardEntry, 'id'>): Promise<CardEntry> {
     const list = await this.list();
-    const newEntry: CardEntry = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    };
+    const newEntry: CardEntry = { ...entry, id: randomId() };
     list.push(newEntry);
-    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(CARD_STORAGE_KEY, JSON.stringify(list));
     return newEntry;
   }
 
@@ -187,14 +159,14 @@ export class AsyncStorageCardStorage implements CardStorage {
     }
     const updatedEntry = { ...list[index], ...updates };
     list[index] = updatedEntry;
-    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(CARD_STORAGE_KEY, JSON.stringify(list));
     return updatedEntry;
   }
 
   async delete(id: string): Promise<void> {
     const list = await this.list();
     const filteredList = list.filter((c) => c.id !== id);
-    await AsyncStorage.setItem(CARD_STORAGE_KEY, JSON.stringify(filteredList));
+    await secureSet(CARD_STORAGE_KEY, JSON.stringify(filteredList));
   }
 }
 
@@ -202,13 +174,8 @@ export const cardStorage = new AsyncStorageCardStorage();
 
 export class AsyncStorageDocumentStorage implements DocumentStorage {
   async list(): Promise<DocumentEntry[]> {
-    try {
-      const json = await AsyncStorage.getItem(DOCUMENT_STORAGE_KEY);
-      return json ? JSON.parse(json) : [];
-    } catch (e) {
-      console.error('Failed to load documents', e);
-      return [];
-    }
+    const json = await secureGet(DOCUMENT_STORAGE_KEY);
+    return json ? JSON.parse(json) : [];
   }
 
   async get(id: string): Promise<DocumentEntry | null> {
@@ -218,12 +185,9 @@ export class AsyncStorageDocumentStorage implements DocumentStorage {
 
   async create(entry: Omit<DocumentEntry, 'id'>): Promise<DocumentEntry> {
     const list = await this.list();
-    const newEntry: DocumentEntry = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-    };
+    const newEntry: DocumentEntry = { ...entry, id: randomId() };
     list.push(newEntry);
-    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(DOCUMENT_STORAGE_KEY, JSON.stringify(list));
     return newEntry;
   }
 
@@ -235,14 +199,14 @@ export class AsyncStorageDocumentStorage implements DocumentStorage {
     }
     const updatedEntry = { ...list[index], ...updates };
     list[index] = updatedEntry;
-    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(list));
+    await secureSet(DOCUMENT_STORAGE_KEY, JSON.stringify(list));
     return updatedEntry;
   }
 
   async delete(id: string): Promise<void> {
     const list = await this.list();
     const filteredList = list.filter((d) => d.id !== id);
-    await AsyncStorage.setItem(DOCUMENT_STORAGE_KEY, JSON.stringify(filteredList));
+    await secureSet(DOCUMENT_STORAGE_KEY, JSON.stringify(filteredList));
   }
 }
 

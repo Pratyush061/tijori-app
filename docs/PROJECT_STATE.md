@@ -12,33 +12,30 @@ It holds passwords, birthday reminders, notes, cards and personal/government doc
 ## Stack
 - React Native 0.81.5, React 19.1, Hermes, New Architecture, TypeScript
 - `react-native-svg` (icons), `@react-native-async-storage/async-storage` (storage),
-  `@react-native-clipboard/clipboard` (copy)
-- `react-native-gesture-handler` (~2.28.0) and `react-native-reanimated` (~3.19.3) - these versions
-  compile against RN 0.81.5; older Reanimated (e.g. 3.16.x) fails the native APK build
-- `react-native-webview` and `@10play/tentap-editor` (rich-text notes); `react-native-image-picker`
-  and `react-native-fs` (document photos)
+  `@react-native-clipboard/clipboard` (copy), `react-native-webview` (rich-text notes),
+  `crypto-js` + `react-native-get-random-values` (encryption at rest)
 - Navigation: hand-rolled tab state in `App.tsx` (no React Navigation)
 - Design tokens in `src/theme.ts` - Apple system greys with a single warm gold accent
 
 ## Already merged to main
 - Lock, Vault home, Passwords, Birthdays, Settings screens
 - Passwords: CRUD, search, categories, favourites, copy-to-clipboard with auto-clear,
-  a flexible "Username / ID" field, an eye toggle inside the password box, plus a password
-  generator, a strength meter and vault health
+  a flexible "Username / ID" field, and an eye toggle inside the password box
 - Birthdays: CRUD and a month calendar with marked dates
 - Notes and Cards sections; Vault home shows real counts and opens each section
-- Notes: full-screen rich-text editor (webview-based) with a formatting toolbar
-- Documents: store Aadhaar, PAN, passport, marksheets and similar, with photos
-- `src/DraggableSheet.tsx` - one shared draggable bottom sheet used by every add/edit sheet,
-  rebuilt on react-native-gesture-handler + reanimated for smooth UI-thread motion
-- Polish: custom launcher icons, empty states and accessibility
+- `src/DraggableSheet.tsx` - one shared draggable bottom sheet used by every add/edit sheet
+- Password generator + strength meter; Vault health (weak / reused / old passwords)
+- Documents: Aadhaar, PAN, passport, driving licence, marksheets and similar, with photos
+- Rich-text notes editor (WebView contenteditable) with a formatting toolbar
+- Sheet motion rebuilt on Reanimated + Gesture Handler (springs, animated backdrop)
 
 ## In flight (pull requests pending)
-- **Security**: real app lock (biometric + passcode with a hint), encryption at rest,
-  working Settings (auto-lock timing, change passcode), and dark mode. The earlier branch
-  conflicted with main, so a clean re-apply task is queued in `.jules/tasks.json`.
-- **PR #12 - Sheet motion + rich-text notes editor**: open, currently failing CI at the
-  Typecheck step (`src/RichEditor.tsx`).
+- **Security - passcode lock and encryption at rest**: a first-run screen creates a
+  passcode; the app is gated behind an unlock screen; every stored value is encrypted
+  with AES-256-CBC under a key derived from the passcode via PBKDF2 (SHA-256);
+  Settings can change the passcode. No biometrics and no native keychain were used,
+  to avoid a fragile native build. Forgetting the passcode means the data cannot be
+  recovered - this is stated on the setup screen.
 
 ## Quality rules (do not break these)
 - No stray or temporary files in commits (`.diff`, `.patch`, `.orig`, `.rej`, `.bak`, editor backups)
@@ -48,4 +45,5 @@ It holds passwords, birthday reminders, notes, cards and personal/government doc
 
 ## Roadmap (not built yet)
 - Document expiry dates and an "expiring soon" view; document packs / checklists
-- Release signing; distribution decisions
+- A proper gold vault launcher icon; release signing with the user's own keystore;
+  distribution decisions

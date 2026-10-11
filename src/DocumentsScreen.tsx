@@ -11,6 +11,8 @@ import {
 
 import { Chevron, Icon, InsetGroup, ListRow } from './components';
 import type { DocumentEntry } from './data';
+import RNFS from 'react-native-fs';
+
 import { documentStorage } from './storage/asyncStorage';
 import { DocumentSheet } from './DocumentSheet';
 import { colors, space } from './theme';
@@ -26,8 +28,13 @@ export function DocumentsScreen({ onBack }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const load = async () => {
-    const data = await documentStorage.list();
-    setItems(data);
+    try {
+      const data = await documentStorage.list();
+      setItems(data);
+    } catch (e) {
+      console.warn('Failed to load documents', e);
+      setItems([]);
+    }
   };
 
   useEffect(() => {
@@ -45,7 +52,17 @@ export function DocumentsScreen({ onBack }: Props) {
 
   const handleDelete = async () => {
     if (selectedEntry) {
+      const photo = selectedEntry.photoPath;
       await documentStorage.delete(selectedEntry.id);
+      if (photo) {
+        // Remove the stored image too, so deleting a document does not leave
+        // its photo behind on disk.
+        try {
+          await RNFS.unlink(photo.replace(/^file:\/\//, ''));
+        } catch {
+          // The file may already be gone; the record is what matters.
+        }
+      }
       load();
       setSheetVisible(false);
     }
