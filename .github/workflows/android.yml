@@ -76,30 +76,17 @@ jobs:
       - name: Unit tests
         run: npm test -- --ci
 
-      # The debug APK loads JS from a Metro dev server; the release APK has the
-      # JS bundle compiled in, so it runs standalone on a phone.
-      - name: Build debug APK
+      # The release APK has the JS bundle compiled in, so it runs standalone on
+      # a phone. Built arm64-v8a only (the architecture every real device uses)
+      # to keep the native compile and the download small.
+      - name: Build release APK (arm64 only, smaller download)
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
 
-      - name: Build release APK (arm64 only, smaller download)
-        working-directory: android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
-
-      - name: Report APKs
-        run: |
-          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          ls -lh android/app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: tijori-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 30
+      - name: Report APK
+        run: ls -lh android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
