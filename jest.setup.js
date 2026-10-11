@@ -118,6 +118,20 @@ jest.mock('react-native-image-picker', () => {
   };
 });
 
+jest.mock('@10play/tentap-editor', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    RichText: (props) => React.createElement(View, props),
+    Toolbar: (props) => React.createElement(View, props),
+    useEditorBridge: jest.fn(() => ({
+      getHTML: jest.fn(() => Promise.resolve('mock html')),
+    })),
+    TenTapStartKit: [],
+    CoreBridge: {},
+  };
+});
+
 jest.mock('react-native-gesture-handler', () => {
   const React = require('react');
   const View = require('react-native').View;
