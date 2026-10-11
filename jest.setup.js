@@ -131,3 +131,80 @@ jest.mock('@10play/tentap-editor', () => {
     CoreBridge: {},
   };
 });
+
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  const View = require('react-native').View;
+  return {
+    Swipeable: View,
+    DrawerLayout: View,
+    State: {},
+    ScrollView: require('react-native').ScrollView,
+    Slider: View,
+    Switch: View,
+    TextInput: View,
+    ToolbarAndroid: View,
+    ViewPagerAndroid: View,
+    DrawerLayoutAndroid: View,
+    WebView: View,
+    NativeViewGestureHandler: View,
+    TapGestureHandler: View,
+    FlingGestureHandler: View,
+    ForceTouchGestureHandler: View,
+    LongPressGestureHandler: View,
+    PanGestureHandler: View,
+    PinchGestureHandler: View,
+    RotationGestureHandler: View,
+    /* Buttons */
+    RawButton: View,
+    BaseButton: View,
+    RectButton: View,
+    BorderlessButton: View,
+    /* Other */
+    FlatList: View,
+    gestureHandlerRootHOC: jest.fn(),
+    Directions: {},
+    GestureHandlerRootView: (props) => React.createElement(View, props, props.children),
+    Gesture: {
+      Pan: jest.fn(() => ({
+        onStart: jest.fn().mockReturnThis(),
+        onChange: jest.fn().mockReturnThis(),
+        onEnd: jest.fn().mockReturnThis(),
+        onUpdate: jest.fn().mockReturnThis(),
+      }))
+    },
+    GestureDetector: (props) => React.createElement(View, props, props.children),
+  };
+});
+
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const View = require('react-native').View;
+
+  const AnimatedView = React.forwardRef((props, ref) => {
+    return React.createElement(View, { ...props, ref });
+  });
+
+  return {
+    __esModule: true,
+    default: {
+      View: AnimatedView,
+      Text: View,
+      Image: View,
+      ScrollView: View,
+    },
+    useSharedValue: jest.fn(() => ({ value: 0 })),
+    useAnimatedStyle: jest.fn(() => ({})),
+    withSpring: jest.fn((v) => v),
+    withTiming: jest.fn((v) => v),
+    runOnJS: jest.fn((fn) => fn),
+    Easing: {
+      out: jest.fn(),
+      cubic: jest.fn(),
+    }
+  };
+});
+
+// Fix createAnimatedComponent mock
+const ReanimatedMock = jest.requireMock('react-native-reanimated');
+ReanimatedMock.default.createAnimatedComponent = (Component: any) => Component;

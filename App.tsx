@@ -85,6 +85,7 @@ function CurrentScreen({ tab }: { tab: TabKey }) {
 
 import { CardsScreen } from './src/CardsScreen';
 import { DocumentsScreen } from './src/DocumentsScreen';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 function App() {
   const [unlocked, setUnlocked] = useState(false);
@@ -93,7 +94,7 @@ function App() {
   const [showDocuments, setShowDocuments] = useState(false);
 
   return (
-    <View style={styles.root}>
+    <GestureHandlerRootView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.inset} />
       {unlocked ? (
@@ -119,7 +120,7 @@ function App() {
       ) : (
         <LockScreen onUnlock={() => setUnlocked(true)} />
       )}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
