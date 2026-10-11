@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useState, useRef, useContext } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useContext,
+} from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,12 +22,12 @@ import {
   ScrollView as RNGHScrollView,
 } from 'react-native-gesture-handler';
 import Animated, {
+  Extrapolation,
+  interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
-  Easing,
-  useAnimatedScrollHandler,
+  withSpring,
 } from 'react-native-reanimated';
 
 import { colors, space } from './theme';
@@ -30,9 +37,20 @@ const VELOCITY_PROJECTION = 140;
 const FULL_ZONE = 0.15;
 const CLOSE_ZONE = 0.75;
 const FLICK = 0.45;
-const SNAP_MS = 240;
 
-export function calculateDestination(position: number, velocity: number, height: number): number {
+// A sheet that moves like the ones people are used to on iOS: it springs up
+// from fully off-screen while the backdrop fades in, and springs back down
+// before it is removed. Springs (not fixed-duration tweens) are what make the
+// motion feel physical rather than abrupt.
+const OPEN_SPRING = { damping: 22, stiffness: 210, mass: 0.9 };
+const CLOSE_SPRING = { damping: 26, stiffness: 240, mass: 0.9 };
+const BACKDROP_OPACITY = 0.4;
+
+export function calculateDestination(
+  position: number,
+  velocity: number,
+  height: number
+): number {
   'worklet';
   const projected = position + velocity * VELOCITY_PROJECTION;
   const flickUp = velocity < -FLICK;
@@ -64,36 +82,33 @@ export const SheetContext = React.createContext<{
 
 const AnimatedScrollView = Animated.createAnimatedComponent(RNGHScrollView);
 
-export const SheetScrollView = React.forwardRef<any, ScrollViewProps>((props, ref) => {
-  const ctx = useContext(SheetContext);
+export const SheetScrollView = React.forwardRef<any, ScrollViewProps>(
+  (props, ref) => {
+    const ctx = useContext(SheetContext);
 
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (e) => {
-      if (ctx && ctx.scrollOffset) {
-        ctx.scrollOffset.value = e.contentOffset.y;
-      }
-    },
-  });
+    if (!ctx) {
+      return <RNGHScrollView ref={ref} {...props} />;
+    }
 
-  if (!ctx) {
-    return <RNGHScrollView ref={ref} {...props} />;
+    return (
+      <RNGHScrollView
+        ref={(node: any) => {
+          if (typeof ref === 'function') ref(node);
+          else if (ref) ref.current = node;
+
+          if (ctx.scrollViewRef) ctx.scrollViewRef.current = node;
+        }}
+        onScroll={event => {
+          ctx.scrollOffset.value = event.nativeEvent.contentOffset.y;
+          if (props.onScroll) props.onScroll(event);
+        }}
+        scrollEventThrottle={16}
+        bounces={false}
+        {...props}
+      />
+    );
   }
-
-  return (
-    <AnimatedScrollView
-      ref={(node: any) => {
-        if (typeof ref === 'function') ref(node);
-        else if (ref) ref.current = node;
-
-        if (ctx.scrollViewRef) ctx.scrollViewRef.current = node;
-      }}
-      onScroll={scrollHandler}
-      scrollEventThrottle={16}
-      bounces={false}
-      {...props}
-    />
-  );
-});
+);
 
 export function DraggableSheet({
   visible,
@@ -106,40 +121,54 @@ export function DraggableSheet({
 }: Props) {
   const [containerHeight, setContainerHeight] = useState(0);
   const translateY = useSharedValue(9999);
-
-  // Track state to handle drag correctly
   const scrollOffset = useSharedValue(0);
   const isDraggingSheet = useSharedValue(false);
   const scrollViewRef = useRef<any>(null);
+  const closingRef = useRef(false);
 
-  const settle = useCallback((toValue: number, callback?: () => void) => {
-    translateY.value = withTiming(
-      toValue,
-      {
-        duration: SNAP_MS,
-        easing: Easing.out(Easing.cubic),
-      },
-      (finished) => {
+  // Where the sheet rests when open: a peek of the screen for normal sheets,
+  // the very top for full-screen ones.
+  const restPosition = useCallback(
+    (h: number) => (fullScreen ? 0 : Math.round(h * 0.28)),
+    [fullScreen]
+  );
+
+  // Spring down, then hand control back to the caller (close, or close after
+  // saving) so the exit is animated instead of the sheet vanishing.
+  const animateOut = useCallback(
+    (after: () => void) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      const h = containerHeight || 1;
+      translateY.value = withSpring(h, CLOSE_SPRING, finished => {
         if (finished) {
-          if (callback) {
-            runOnJS(callback)();
-          }
+          runOnJS(after)();
         }
-      }
-    );
-  }, [translateY]);
+      });
+    },
+    [containerHeight, translateY]
+  );
 
   const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
 
+  const handleSave = useCallback(() => {
+    onSave();
+  }, [onSave]);
+
+  // Open: place the sheet just off the bottom edge, then spring it into place.
   useEffect(() => {
     if (visible && containerHeight > 0) {
+      closingRef.current = false;
       translateY.value = containerHeight;
-      const rest = fullScreen ? 0 : Math.round(containerHeight * 0.28);
-      settle(rest);
+      translateY.value = withSpring(restPosition(containerHeight), OPEN_SPRING);
     }
-  }, [visible, containerHeight, settle, translateY, fullScreen]);
+    if (!visible) {
+      translateY.value = 9999;
+      closingRef.current = false;
+    }
+  }, [visible, containerHeight, restPosition, translateY]);
 
   const panGesture = Gesture.Pan()
     .enabled(dragEnabled)
@@ -147,14 +176,8 @@ export function DraggableSheet({
     .onStart(() => {
       isDraggingSheet.value = false;
     })
-    .onChange((event) => {
+    .onChange(event => {
       const h = containerHeight || 1;
-
-      // Determine if we should drag the sheet
-      // We drag the sheet if:
-      // 1. The sheet is not fully open (translateY.value > 0)
-      // 2. We are already dragging the sheet this gesture
-      // 3. The scroll view is at the top (or bounced past) and pulling DOWN
       const atTop = scrollOffset.value <= 0;
       const pullingDown = event.changeY > 0;
       const notFull = translateY.value > 0;
@@ -163,43 +186,50 @@ export function DraggableSheet({
         isDraggingSheet.value = true;
         let next = translateY.value + event.changeY;
 
-        if (next < 0) {
-          // overdrag top
-          next = translateY.value + event.changeY * OVERDRAG;
-        } else if (next > h) {
-          // overdrag bottom
+        if (next < 0 || next > h) {
           next = translateY.value + event.changeY * OVERDRAG;
         }
 
         translateY.value = next;
       }
     })
-    .onEnd((event) => {
+    .onEnd(event => {
+      const h = containerHeight || 1;
       if (isDraggingSheet.value) {
-        const h = containerHeight || 1;
-        const dest = calculateDestination(translateY.value, event.velocityY, h);
-
+        const dest = calculateDestination(
+          translateY.value,
+          event.velocityY,
+          h
+        );
         if (dest === h) {
-          runOnJS(settle)(h, handleClose);
+          translateY.value = withSpring(h, CLOSE_SPRING, finished => {
+            if (finished) runOnJS(handleClose)();
+          });
         } else {
-          runOnJS(settle)(dest);
+          translateY.value = withSpring(dest, OPEN_SPRING);
         }
-      } else {
-        // If we just clicked/tapped or scrolled normally without dragging the sheet,
-        // snap back to bounds if we somehow went out.
-        const h = containerHeight || 1;
-        if (translateY.value < 0) {
-          runOnJS(settle)(0);
-        } else if (translateY.value > h) {
-          runOnJS(settle)(h);
-        }
+      } else if (translateY.value < 0) {
+        translateY.value = withSpring(0, OPEN_SPRING);
+      } else if (translateY.value > h) {
+        translateY.value = withSpring(h, OPEN_SPRING);
       }
     });
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  // The backdrop fades with the sheet, so the two move as one object.
+  const backdropStyle = useAnimatedStyle(() => {
+    const h = containerHeight || 1;
+    const rest = fullScreen ? 0 : h * 0.28;
+    const opacity = interpolate(
+      translateY.value,
+      [h, rest],
+      [0, BACKDROP_OPACITY],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
   });
 
   return (
@@ -207,24 +237,33 @@ export function DraggableSheet({
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={onClose}
+      statusBarTranslucent
+      onRequestClose={() => animateOut(handleClose)}
     >
       <View
         style={styles.overlay}
         onLayout={event => {
           const h = event.nativeEvent.layout.height;
-          setContainerHeight(h);
+          if (h > 0 && h !== containerHeight) setContainerHeight(h);
         }}
       >
+        <Animated.View style={[styles.backdrop, backdropStyle]}>
+          <Pressable
+            style={styles.backdropPress}
+            onPress={() => animateOut(handleClose)}
+          />
+        </Animated.View>
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
+          pointerEvents="box-none"
         >
           <GestureDetector gesture={panGesture}>
             <Animated.View
               style={[
                 styles.sheet,
-                animatedStyle,
+                sheetStyle,
                 { height: containerHeight || undefined },
               ]}
             >
@@ -232,7 +271,7 @@ export function DraggableSheet({
                 <View style={styles.handle} />
                 <View style={styles.header}>
                   <TouchableOpacity
-                    onPress={onClose}
+                    onPress={() => animateOut(handleClose)}
                     style={styles.headerButton}
                     hitSlop={8}
                   >
@@ -240,7 +279,7 @@ export function DraggableSheet({
                   </TouchableOpacity>
                   <Text style={styles.title}>{title}</Text>
                   <TouchableOpacity
-                    onPress={onSave}
+                    onPress={() => animateOut(handleSave)}
                     style={styles.headerButton}
                     hitSlop={8}
                   >
@@ -267,8 +306,14 @@ export function DraggableSheet({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+  },
+  backdropPress: {
+    flex: 1,
   },
   keyboardView: {
     flex: 1,
