@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -8,10 +7,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
 import { Calendar } from './Calendar';
 import type { Birthday } from './data';
-import { DraggableSheet } from './DraggableSheet';
+import { DraggableSheet, SheetScrollView } from './DraggableSheet';
 import { colors, radius, space } from './theme';
 
 type Props = {
@@ -74,7 +72,7 @@ export function BirthdaySheet({
       onSave={handleSave}
       title={entry ? 'Edit Birthday' : 'New Birthday'}
     >
-      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      <SheetScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <TextInput
             style={[styles.input, styles.inputBorder]}
@@ -115,7 +113,7 @@ export function BirthdaySheet({
             <Text style={styles.deleteButtonText}>Delete Birthday</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </SheetScrollView>
     </DraggableSheet>
   );
 }
