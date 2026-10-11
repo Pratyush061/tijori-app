@@ -105,6 +105,7 @@ export function DraggableSheet({
   fullScreen = false,
 }: Props) {
   const [containerHeight, setContainerHeight] = useState(0);
+  const [modalVisible, setModalVisible] = useState(visible);
   const translateY = useSharedValue(9999);
 
   // Track state to handle drag correctly
@@ -134,10 +135,21 @@ export function DraggableSheet({
   }, [onClose]);
 
   useEffect(() => {
-    if (visible && containerHeight > 0) {
-      translateY.value = containerHeight;
-      const rest = fullScreen ? 0 : Math.round(containerHeight * 0.28);
-      settle(rest);
+    if (visible) {
+      setModalVisible(true);
+      if (containerHeight > 0) {
+        translateY.value = containerHeight;
+        const rest = fullScreen ? 0 : Math.round(containerHeight * 0.28);
+        settle(rest);
+      }
+    } else {
+      if (containerHeight > 0) {
+        settle(containerHeight, () => {
+          setModalVisible(false);
+        });
+      } else {
+        setModalVisible(false);
+      }
     }
   }, [visible, containerHeight, settle, translateY, fullScreen]);
 
@@ -177,10 +189,12 @@ export function DraggableSheet({
     .onEnd((event) => {
       if (isDraggingSheet.value) {
         const h = containerHeight || 1;
-        const dest = calculateDestination(translateY.value, event.velocityY, h);
+        // event.velocityY is in pixels/second, calculateDestination expects pixels/ms
+        const velocityMs = event.velocityY / 1000.0;
+        const dest = calculateDestination(translateY.value, velocityMs, h);
 
         if (dest === h) {
-          runOnJS(settle)(h, handleClose);
+          runOnJS(handleClose)();
         } else {
           runOnJS(settle)(dest);
         }
@@ -204,7 +218,7 @@ export function DraggableSheet({
 
   return (
     <Modal
-      visible={visible}
+      visible={modalVisible}
       animationType="none"
       transparent
       onRequestClose={onClose}
