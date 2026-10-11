@@ -3,7 +3,6 @@
  */
 
 import React from 'react';
-import { TextInput, TouchableOpacity } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 
 import App from '../App';
@@ -16,38 +15,46 @@ async function renderApp() {
   return tree;
 }
 
-test('first run shows the create-passcode screen', async () => {
+function findKey(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
+  return tree.root.findAll(
+    node =>
+      !!node.props &&
+      node.props.accessibilityLabel === label &&
+      typeof node.props.onPress === 'function'
+  )[0];
+}
+
+async function tap(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
+  await ReactTestRenderer.act(async () => {
+    findKey(tree, label).props.onPress();
+  });
+}
+
+test('first run shows the create-passcode keypad', async () => {
   const tree = await renderApp();
   const json = JSON.stringify(tree.toJSON());
   expect(json).toContain('Tijori');
-  expect(json).toContain('Create a passcode to secure your vault');
+  expect(json).toContain('Create a passcode');
 });
 
-test('creating a passcode reveals the vault and its tabs', async () => {
+test('entering and confirming a passcode reveals the vault', async () => {
   const tree = await renderApp();
 
-  const inputs = tree.root.findAllByType(TextInput);
-  const pass = inputs.find(i => i.props.accessibilityLabel === 'Passcode');
-  const confirm = inputs.find(i => i.props.accessibilityLabel === 'Confirm passcode');
-  expect(pass).toBeTruthy();
-  expect(confirm).toBeTruthy();
+  // Step 1: choose a passcode and confirm it with the check key.
+  for (const digit of ['1', '2', '3', '4']) {
+    await tap(tree, digit);
+  }
+  await tap(tree, '✓');
 
+  // Step 2: enter it again.
+  for (const digit of ['1', '2', '3', '4']) {
+    await tap(tree, digit);
+  }
   await ReactTestRenderer.act(async () => {
-    pass!.props.onChangeText('1234');
-    confirm!.props.onChangeText('1234');
+    await findKey(tree, '✓').props.onPress();
   });
 
-  const create = tree.root
-    .findAllByType(TouchableOpacity)
-    .find(b => b.props.accessibilityLabel === 'Create passcode');
-  expect(create).toBeTruthy();
-
-  await ReactTestRenderer.act(async () => {
-    await create!.props.onPress();
-  });
-
-  // Assert on structure (tab labels and the hero stats), not on marketing copy,
-  // so a copy change cannot break the test.
+  // Assert on structure (tab labels and the hero stats), not on marketing copy.
   const json = JSON.stringify(tree.toJSON());
   expect(json).toContain('Items');
   expect(json).toContain('Passwords');

@@ -84,6 +84,7 @@ function buildDocument(initialHTML: string, accent: string) {
 <script>
   (function () {
     var editor = document.getElementById('editor');
+    var savedRange = null;
 
     function push() {
       if (window.ReactNativeWebView) {
@@ -91,14 +92,34 @@ function buildDocument(initialHTML: string, accent: string) {
       }
     }
 
+    function rememberSelection() {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        var range = sel.getRangeAt(0);
+        if (editor.contains(range.commonAncestorContainer)) {
+          savedRange = range.cloneRange();
+        }
+      }
+    }
+
+    function restoreSelection() {
+      if (!savedRange) return;
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+
     editor.addEventListener('input', push);
     editor.addEventListener('blur', push);
     editor.addEventListener('keyup', push);
+    document.addEventListener('selectionchange', rememberSelection);
 
     window.__exec = function (command, value) {
       editor.focus();
-      document.execCommand('styleWithCSS', false, false);
+      restoreSelection();
+      document.execCommand('styleWithCSS', false, true);
       document.execCommand(command, false, value === undefined ? null : value);
+      rememberSelection();
       push();
     };
 

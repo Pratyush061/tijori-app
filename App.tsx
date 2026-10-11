@@ -5,7 +5,15 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+} from 'react-native';
 
 import { Icon, TabBar } from './src/components';
 import type { TabKey } from './src/components';
@@ -102,7 +110,14 @@ function App() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const initialized = await isVaultInitialized();
+      let initialized = false;
+      try {
+        initialized = await isVaultInitialized();
+      } catch {
+        // If the vault marker cannot be read, fall back to setup rather than
+        // leaving the user on a blank screen.
+        initialized = false;
+      }
       if (alive) setPhase(initialized ? 'locked' : 'setup');
     })();
     return () => {
@@ -121,7 +136,9 @@ function App() {
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.inset} />
       {phase === 'loading' ? (
-        <View style={styles.content} />
+        <View style={styles.loading}>
+          <ActivityIndicator color={colors.gold} />
+        </View>
       ) : phase === 'setup' ? (
         <PasscodeSetupScreen onDone={() => setPhase('unlocked')} />
       ) : phase === 'locked' ? (
@@ -159,6 +176,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nav: {
     flexDirection: 'row',
