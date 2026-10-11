@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -14,10 +15,24 @@ import {
 
 import { colors, space } from './theme';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const FULL_AT = SCREEN_HEIGHT * 0.06;
-const REST_TRANSLATE = SCREEN_HEIGHT * 0.28;
-const DISMISS_AT = SCREEN_HEIGHT * 0.75;
+/**
+ * A draggable bottom sheet.
+ *
+ * The sheet is a full-height panel slid down with a transform (a transform is
+ * far cheaper to animate than a height, which forces a layout pass every frame).
+ *
+ * The drag follows the finger 1:1, with resistance past the ends so it never
+ * feels like it has hit a wall. On release the position is projected forward
+ * using the finger's velocity - the same approach native sheets use - and then
+ * it either fills the screen, closes, or stays where it was let go.
+ */
+
+const OVERDRAG = 0.35; // how much of an over-drag actually moves
+const VELOCITY_PROJECTION = 140; // ms of "flick" carried into the release
+const FULL_ZONE = 0.15; // released within 15% of the top -> full screen
+const CLOSE_ZONE = 0.75; // released within 25% of the bottom -> close
+const FLICK = 0.45; // px/ms that counts as a flick
+const SNAP_MS = 240;
 
 type Props = {
   visible: boolean;
@@ -34,68 +49,118 @@ export function DraggableSheet({
   title,
   children,
 }: Props) {
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const currentY = useRef(SCREEN_HEIGHT);
-  const dragStart = useRef(SCREEN_HEIGHT);
+  // Measured from the modal's own layout, so "full screen" really is the whole
+  // screen - not the window minus the system bars.
+  const [containerHeight, setContainerHeight] = useState(
+    Dimensions.get('window').height,
+  );
+  const heightRef = useRef(Dimensions.get('window').height);
 
-  const settle = React.useCallback(
-    (toValue: number, cb?: () => void) => {
-      Animated.spring(translateY, {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const currentY = useRef(0);
+  const dragStartY = useRef(0);
+
+  const restY = useCallback(() => Math.round(heightRef.current * 0.28), []);
+
+  const settle = useCallback(
+    (toValue: number, after?: () => void) => {
+      currentY.current = toValue;
+      Animated.timing(translateY, {
         toValue,
+        duration: SNAP_MS,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-        bounciness: 0,
-        speed: 14,
-      }).start(() => {
-        currentY.current = toValue;
-        if (cb) {
-          cb();
+      }).start(({ finished }) => {
+        if (finished && after) {
+          after();
         }
       });
     },
-    [translateY]
+    [translateY],
   );
+
+  const settleRef = useRef(settle);
+  settleRef.current = settle;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 2,
+      // Capture the gesture only once it is clearly a vertical drag, so taps on
+      // Cancel / Save still reach their buttons but dragging anywhere on the
+      // handle or header moves the sheet.
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponderCapture: (_e, g) =>
+        Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
       onPanResponderGrant: () => {
         translateY.stopAnimation(value => {
-          dragStart.current = value;
+          dragStartY.current = value;
           currentY.current = value;
         });
       },
-      onPanResponderMove: (_, g) => {
-        const next = Math.min(
-          SCREEN_HEIGHT,
-          Math.max(0, dragStart.current + g.dy),
-        );
+      onPanResponderMove: (_e, g) => {
+        const h = heightRef.current || 1;
+        let next = dragStartY.current + g.dy;
+        if (next < 0) {
+          next = next * OVERDRAG;
+        } else if (next > h) {
+          next = h + (next - h) * OVERDRAG;
+        }
         currentY.current = next;
         translateY.setValue(next);
       },
-      onPanResponderRelease: () => {
-        const y = currentY.current;
-        if (y <= FULL_AT) {
-          settle(0);
-        } else if (y >= DISMISS_AT) {
-          settle(SCREEN_HEIGHT, onClose);
+      onPanResponderRelease: (_e, g) => {
+        const h = heightRef.current || 1;
+        // Project the release forward using the finger's velocity.
+        const projected = currentY.current + g.vy * VELOCITY_PROJECTION;
+
+        const flickUp = g.vy < -FLICK;
+        const flickDown = g.vy > FLICK;
+
+        if (flickUp || projected <= h * FULL_ZONE) {
+          settleRef.current(0);
+        } else if (flickDown || projected >= h * CLOSE_ZONE) {
+          settleRef.current(h, () => onCloseRef.current());
         } else {
-          settle(y);
+          // Keep it where it was let go.
+          settleRef.current(Math.max(0, Math.min(h, currentY.current)));
         }
       },
     }),
   ).current;
 
   useEffect(() => {
-    if (visible) {
-      translateY.setValue(SCREEN_HEIGHT);
-      settle(REST_TRANSLATE);
+    if (visible && heightRef.current > 0) {
+      const rest = restY();
+      translateY.setValue(heightRef.current);
+      currentY.current = heightRef.current;
+      dragStartY.current = rest;
+      settle(rest);
     }
-  }, [visible, translateY, settle]);
+  }, [visible, heightRef, restY, settle, translateY]);
 
   return (
-    <Modal visible={visible} animationType="none" transparent>
-      <View style={styles.overlay}>
+    <Modal
+      visible={visible}
+      animationType="none"
+      transparent
+      onRequestClose={onClose}
+    >
+      <View
+        style={styles.overlay}
+        onLayout={event => {
+          const h = event.nativeEvent.layout.height;
+          heightRef.current = h;
+          setContainerHeight(h);
+          if (visible) {
+            const rest = Math.round(h * 0.28);
+            translateY.setValue(h);
+            currentY.current = h;
+            dragStartY.current = rest;
+            settle(rest);
+          }
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}
@@ -103,25 +168,35 @@ export function DraggableSheet({
           <Animated.View
             style={[
               styles.sheet,
-              { height: SCREEN_HEIGHT, transform: [{ translateY }] },
+              {
+                height: containerHeight || undefined,
+                transform: [{ translateY }],
+              },
             ]}
           >
-            <View style={styles.grabberArea} {...panResponder.panHandlers}>
-              <View style={styles.grabber} />
-            </View>
-
-            <View style={styles.header}>
-              <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-                <Text style={styles.headerButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.title}>{title}</Text>
-              <TouchableOpacity onPress={onSave} style={styles.headerButton}>
-                <Text
-                  style={[styles.headerButtonText, styles.headerButtonStrong]}
+            <View style={styles.handleArea} {...panResponder.panHandlers}>
+              <View style={styles.handle} />
+              <View style={styles.header}>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={styles.headerButton}
+                  hitSlop={8}
                 >
-                  Save
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.headerButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.title}>{title}</Text>
+                <TouchableOpacity
+                  onPress={onSave}
+                  style={styles.headerButton}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[styles.headerButtonText, styles.headerButtonStrong]}
+                  >
+                    Save
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {children}
@@ -148,22 +223,23 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: 'hidden',
   },
-  grabberArea: {
-    alignItems: 'center',
+  handleArea: {
     paddingTop: 10,
-    paddingBottom: 8,
   },
-  grabber: {
+  handle: {
+    alignSelf: 'center',
     width: 38,
     height: 5,
     borderRadius: 3,
     backgroundColor: colors.dim2,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: space.lg,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.sep,
   },
