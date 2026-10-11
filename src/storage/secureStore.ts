@@ -3,7 +3,7 @@ import CryptoJS from 'crypto-js';
 
 import {
   ENC_MARKER,
-  deriveKey,
+  deriveKeyAsync,
   decryptString,
   encryptString,
   makeSalt,
@@ -52,7 +52,7 @@ export async function isVaultInitialized(): Promise<boolean> {
  */
 export async function initializeVault(passcode: string): Promise<void> {
   const salt = makeSalt();
-  const key = deriveKey(passcode, salt);
+  const key = await deriveKeyAsync(passcode, salt);
   const blob = JSON.stringify({
     salt: salt.toString(CryptoJS.enc.Base64),
     v: encryptString(VERIFIER_PLAIN, key),
@@ -74,7 +74,7 @@ export async function unlockVault(passcode: string): Promise<boolean> {
   if (!parsed.salt || !parsed.v) return false;
 
   const salt = CryptoJS.enc.Base64.parse(parsed.salt);
-  const key = deriveKey(passcode, salt);
+  const key = await deriveKeyAsync(passcode, salt);
   if (decryptString(parsed.v, key) !== VERIFIER_PLAIN) return false;
 
   activeKey = key;
