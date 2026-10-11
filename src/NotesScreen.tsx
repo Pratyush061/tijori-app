@@ -11,13 +11,13 @@ import {
 import { Chevron, Icon, InsetGroup, ListRow, Monogram } from './components';
 import type { NoteEntry } from './data';
 import { noteStorage } from './storage/asyncStorage';
-import { NoteSheet } from './NoteSheet';
+import { NoteEditorScreen } from './NoteEditorScreen';
 import { colors, space } from './theme';
 
 export function NotesScreen() {
   const [items, setItems] = useState<NoteEntry[]>([]);
   const [search, setSearch] = useState('');
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [editorVisible, setEditorVisible] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<NoteEntry | null>(null);
 
   const load = async () => {
@@ -42,13 +42,28 @@ export function NotesScreen() {
     if (selectedEntry) {
       await noteStorage.delete(selectedEntry.id);
       load();
-      setSheetVisible(false);
+      setEditorVisible(false);
     }
+  };
+
+  const stripHtml = (html: string) => {
+    return html.replace(/<[^>]*>?/gm, '').trim() || 'No preview';
   };
 
   const filtered = items.filter(n =>
     n.title.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (editorVisible) {
+    return (
+      <NoteEditorScreen
+        entry={selectedEntry}
+        onClose={() => setEditorVisible(false)}
+        onSave={handleSave}
+        onDelete={selectedEntry ? handleDelete : undefined}
+      />
+    );
+  }
 
   return (
     <View style={styles.flex}>
@@ -72,7 +87,7 @@ export function NotesScreen() {
               style={styles.addButton}
               onPress={() => {
                 setSelectedEntry(null);
-                setSheetVisible(true);
+                setEditorVisible(true);
               }}
             >
               <Text style={styles.addButtonText}>Add Note</Text>
@@ -88,10 +103,10 @@ export function NotesScreen() {
                     divider={i > 0}
                     leading={<Monogram label={n.initial} color={n.color} round />}
                     title={n.title}
-                    subtitle={n.body.split('\n')[0]}
+                    subtitle={stripHtml(n.body).split('\n')[0]}
                     onPress={() => {
                       setSelectedEntry(n);
-                      setSheetVisible(true);
+                      setEditorVisible(true);
                     }}
                     right={<Chevron />}
                   />
@@ -103,7 +118,7 @@ export function NotesScreen() {
               style={[styles.addButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
               onPress={() => {
                 setSelectedEntry(null);
-                setSheetVisible(true);
+                setEditorVisible(true);
               }}
             >
               <Text style={styles.addButtonText}>Add Note</Text>
@@ -111,14 +126,6 @@ export function NotesScreen() {
           </>
         )}
       </ScrollView>
-
-      <NoteSheet
-        visible={sheetVisible}
-        onClose={() => setSheetVisible(false)}
-        onSave={handleSave}
-        onDelete={selectedEntry ? handleDelete : undefined}
-        entry={selectedEntry}
-      />
     </View>
   );
 }
