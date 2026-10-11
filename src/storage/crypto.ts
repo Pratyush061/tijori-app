@@ -17,6 +17,7 @@ const KEY_SIZE_WORDS = 256 / 32;
 const SALT_BYTES = 16;
 const IV_BYTES = 16;
 const PBKDF2_ITERATIONS = 150000;
+const PBKDF2_YIELD_EVERY = 500;
 
 export type VaultKey = CryptoJS.lib.WordArray;
 
@@ -55,12 +56,64 @@ export function makeSalt(): CryptoJS.lib.WordArray {
   return randomBytes(SALT_BYTES);
 }
 
+/**
+ * Synchronous PBKDF2 retained for compatibility and test-vector comparison.
+ * Prefer deriveKeyAsync in app flows so the JavaScript thread can process UI
+ * work while all 150,000 PBKDF2-HMAC-SHA256 rounds are performed.
+ */
 export function deriveKey(passcode: string, salt: CryptoJS.lib.WordArray): VaultKey {
   return CryptoJS.PBKDF2(passcode, salt, {
     keySize: KEY_SIZE_WORDS,
     iterations: PBKDF2_ITERATIONS,
     hasher: CryptoJS.algo.SHA256,
   });
+}
+
+function yieldToUi(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/**
+ * Incremental PBKDF2-HMAC-SHA256 implementation with the same parameters and
+ * byte-for-byte output as CryptoJS.PBKDF2 above. Yielding between chunks keeps
+ * Android's JS thread responsive without weakening the 150,000-iteration KDF.
+ */
+export async function deriveKeyAsync(
+  passcode: string,
+  salt: CryptoJS.lib.WordArray
+): Promise<VaultKey> {
+  const hmac = CryptoJS.algo.HMAC.create(CryptoJS.algo.SHA256, passcode);
+  const derivedKey = CryptoJS.lib.WordArray.create();
+  const blockIndex = CryptoJS.lib.WordArray.create([1]);
+
+  while (derivedKey.words.length < KEY_SIZE_WORDS) {
+    const block = hmac.update(salt).finalize(blockIndex);
+    hmac.reset();
+
+    const blockWords = block.words;
+    let intermediate = block.clone();
+
+    for (let iteration = 1; iteration < PBKDF2_ITERATIONS; iteration++) {
+      intermediate = hmac.finalize(intermediate);
+      hmac.reset();
+
+      const intermediateWords = intermediate.words;
+      for (let i = 0; i < blockWords.length; i++) {
+        blockWords[i] ^= intermediateWords[i];
+      }
+
+      if (iteration % PBKDF2_YIELD_EVERY === 0) {
+        await yieldToUi();
+      }
+    }
+
+    derivedKey.concat(block);
+    blockIndex.words[0]++;
+  }
+
+  derivedKey.sigBytes = KEY_SIZE_WORDS * 4;
+  derivedKey.clamp();
+  return derivedKey;
 }
 
 export function encryptString(plain: string, key: VaultKey): string {
