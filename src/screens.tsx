@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,7 @@ import { getDaysAway, formatBirthdayDate } from './data';
 import type { PasswordEntry, Birthday, NoteEntry, CardEntry, DocumentEntry } from './data';
 import { passwordStorage, birthdayStorage, noteStorage, cardStorage, documentStorage } from './storage/asyncStorage';
 import { changePasscode } from './storage/secureStore';
+import { Keypad, PasscodeDots } from './PasscodeKeypad';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
@@ -46,7 +48,7 @@ export function LockScreen({
   const [busy, setBusy] = React.useState(false);
 
   const submit = async () => {
-    if (busy || passcode.length === 0) return;
+    if (busy || passcode.length < 4) return;
     setBusy(true);
     const ok = await onUnlock(passcode);
     if (!ok) {
@@ -58,41 +60,31 @@ export function LockScreen({
 
   return (
     <View style={styles.lock}>
-      <View style={styles.lockBadge}>
-        <Icon name="lock" size={40} color={colors.goldDark} strokeWidth={1.5} />
+      <View style={styles.lockTop}>
+        <View style={styles.lockBadge}>
+          <Icon name="lock" size={34} color={colors.goldDark} strokeWidth={1.5} />
+        </View>
+        <Text style={styles.lockTitle}>Tijori</Text>
+        <Text style={styles.lockCaption}>
+          {error ? error : 'Enter your passcode'}
+        </Text>
+        <PasscodeDots filled={passcode.length} error={!!error} />
+        {busy ? <ActivityIndicator color={colors.gold} style={styles.lockBusy} /> : null}
       </View>
-      <Text style={styles.lockTitle}>Tijori</Text>
-      <Text style={styles.lockCaption}>Your private locker</Text>
 
-      <TextInput
-        style={styles.lockInput}
-        placeholder="Passcode"
-        placeholderTextColor={colors.dim}
-        value={passcode}
-        onChangeText={text => {
-          setPasscode(text);
-          if (error) setError(null);
+      <Keypad
+        onDigit={digit => {
+          setError(null);
+          setPasscode(prev => (prev.length < 8 ? prev + digit : prev));
         }}
-        secureTextEntry
-        keyboardType="number-pad"
-        maxLength={8}
-        accessibilityLabel="Passcode"
-        onSubmitEditing={submit}
-      />
-
-      {error ? <Text style={styles.lockError}>{error}</Text> : null}
-
-      <TouchableOpacity
-        style={styles.lockButton}
-        activeOpacity={0.85}
-        onPress={submit}
+        onBackspace={() => {
+          setError(null);
+          setPasscode(prev => prev.slice(0, -1));
+        }}
+        onEnter={submit}
+        enterEnabled={passcode.length >= 4}
         disabled={busy}
-        accessibilityLabel="Unlock"
-        accessibilityRole="button"
-      >
-        <Icon name="shield" size={19} color="#FFFFFF" />
-        <Text style={styles.lockButtonText}>{busy ? 'Unlocking...' : 'Unlock'}</Text>
-      </TouchableOpacity>
+      />
     </View>
   );
 }
@@ -1046,13 +1038,20 @@ const styles = StyleSheet.create({
   lock: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: space.xl,
+    backgroundColor: colors.bg,
+  },
+  lockTop: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: space.xl,
   },
   lockBadge: {
-    width: 88,
-    height: 88,
-    borderRadius: 26,
+    width: 76,
+    height: 76,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
@@ -1066,49 +1065,18 @@ const styles = StyleSheet.create({
   },
   lockTitle: {
     fontFamily: serifFont,
-    fontSize: 46,
+    fontSize: 34,
     fontWeight: '600',
     color: colors.ink,
-    marginTop: space.xl,
+    marginTop: space.lg,
   },
   lockCaption: {
     fontSize: 14,
     color: colors.dim,
     marginTop: 6,
   },
-  lockButton: {
-    position: 'absolute',
-    bottom: 118,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.ink,
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: space.xl,
-  },
-  lockButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  lockInput: {
-    position: 'absolute',
-    bottom: 190,
-    width: 220,
-    textAlign: 'center',
-    fontSize: 22,
-    letterSpacing: 8,
-    color: colors.ink,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.dim2,
-  },
-  lockError: {
-    position: 'absolute',
-    bottom: 168,
-    fontSize: 13,
-    color: colors.pink,
+  lockBusy: {
+    marginTop: space.sm,
   },
 
   bigTitleWrap: {
