@@ -67,6 +67,7 @@ export function NotesScreen() {
         {items.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No notes yet</Text>
+            <Text style={styles.emptyHint}>Add your first note to get started.</Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => {
@@ -148,7 +149,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.dim,
+    marginBottom: space.sm,
+  },
+  emptyHint: {
+    fontSize: 15,
+    color: colors.dim,
+    textAlign: 'center',
     marginBottom: space.lg,
+    paddingHorizontal: space.xl,
   },
   addButton: {
     backgroundColor: colors.gold,

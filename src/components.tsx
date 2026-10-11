@@ -272,6 +272,8 @@ export function TabBar({
             style={styles.tab}
             activeOpacity={0.7}
             onPress={() => onChange(t.key)}
+            accessibilityLabel={t.label}
+            accessibilityRole="button"
           >
             <Icon name={t.icon} size={23} color={tint} />
             <Text style={[styles.tabLabel, { color: tint }]}>{t.label}</Text>

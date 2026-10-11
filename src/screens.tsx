@@ -291,7 +291,11 @@ export function PasswordsScreen() {
   return (
     <View style={styles.flex}>
       <View style={{ alignItems: 'flex-end', paddingHorizontal: space.xl, marginTop: -35, zIndex: 10, elevation: 10, paddingBottom: 10 }}>
-        <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+        <TouchableOpacity
+          onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}
+          accessibilityLabel="Add Password"
+          accessibilityRole="button"
+        >
           <Icon name="plus" size={24} color={colors.ink} />
         </TouchableOpacity>
       </View>
@@ -336,45 +340,63 @@ export function PasswordsScreen() {
         ))}
       </ScrollView>
 
-      <SectionLabel>Security</SectionLabel>
-      <InsetGroup>
-        <ListRow
-          divider={false}
-          leading={
-            <View
-              style={[styles.alertIcon, { backgroundColor: colors.orange }]}
-            >
-              <Icon name="shield" size={20} color="#FFFFFF" />
-            </View>
-          }
-          title="3 passwords need attention"
-          subtitle="Reused or older than a year"
-          right={<Chevron />}
-        />
-      </InsetGroup>
-
-      <SectionLabel>All items</SectionLabel>
-      <InsetGroup>
-        {filteredItems.map((p, i) => (
-          <ListRow
-            key={p.id}
-            divider={i > 0}
-            leading={<Monogram label={p.initial} color={p.color} />}
-            title={p.name}
-            subtitle={[p.subtitle, p.category].filter(Boolean).join(' • ')}
+      {filteredItems.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No passwords yet</Text>
+          <Text style={styles.emptyHint}>Add your first password to get started.</Text>
+          <TouchableOpacity
+            style={styles.addButton}
             onPress={() => {
-              setSelectedEntry(p);
+              setSelectedEntry(null);
               setSheetVisible(true);
             }}
-            right={
-              <View style={styles.rowTail}>
-                <Text style={styles.dots}>••••••</Text>
-                <Chevron />
-              </View>
-            }
-          />
-        ))}
-      </InsetGroup>
+          >
+            <Text style={styles.addButtonText}>Add Password</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <SectionLabel>Security</SectionLabel>
+          <InsetGroup>
+            <ListRow
+              divider={false}
+              leading={
+                <View
+                  style={[styles.alertIcon, { backgroundColor: colors.orange }]}
+                >
+                  <Icon name="shield" size={20} color="#FFFFFF" />
+                </View>
+              }
+              title="3 passwords need attention"
+              subtitle="Reused or older than a year"
+              right={<Chevron />}
+            />
+          </InsetGroup>
+
+          <SectionLabel>All items</SectionLabel>
+          <InsetGroup>
+            {filteredItems.map((p, i) => (
+              <ListRow
+                key={p.id}
+                divider={i > 0}
+                leading={<Monogram label={p.initial} color={p.color} />}
+                title={p.name}
+                subtitle={[p.subtitle, p.category].filter(Boolean).join(' • ')}
+                onPress={() => {
+                  setSelectedEntry(p);
+                  setSheetVisible(true);
+                }}
+                right={
+                  <View style={styles.rowTail}>
+                    <Text style={styles.dots}>••••••</Text>
+                    <Chevron />
+                  </View>
+                }
+              />
+            ))}
+          </InsetGroup>
+        </>
+      )}
     </ScrollView>
       <PasswordSheet
         visible={sheetVisible}
@@ -467,6 +489,21 @@ export function BirthdaysScreen() {
         </View>
 
         {viewMode === 'list' ? (
+          items.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No birthdays yet</Text>
+              <Text style={styles.emptyHint}>Add your first birthday to get started.</Text>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => {
+                  setSelectedEntry(null);
+                  setSheetVisible(true);
+                }}
+              >
+                <Text style={styles.addButtonText}>Add Birthday</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
           <>
             {next && (
               <TouchableOpacity
@@ -526,6 +563,7 @@ export function BirthdaysScreen() {
               <Text style={styles.wishButtonText}>Add Birthday</Text>
             </TouchableOpacity>
           </>
+          )
         ) : (
           <>
             <Calendar
@@ -654,6 +692,35 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   scroll: { paddingBottom: 32 },
+
+  empty: {
+    alignItems: 'center',
+    marginTop: 64,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.dim,
+    marginBottom: space.sm,
+  },
+  emptyHint: {
+    fontSize: 15,
+    color: colors.dim,
+    textAlign: 'center',
+    marginBottom: space.lg,
+    paddingHorizontal: space.xl,
+  },
+  addButton: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 13,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
   lock: {
     flex: 1,
