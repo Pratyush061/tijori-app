@@ -68,7 +68,7 @@ export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
       return;
     }
 
-    void finishSetup(first);
+    return finishSetup(first);
   };
 
   return (
