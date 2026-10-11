@@ -210,3 +210,26 @@ export const cards: CardEntry[] = [
     initial: 'C',
   },
 ];
+
+export const DocumentTypes = [
+  'Aadhaar',
+  'PAN',
+  'Passport',
+  'Driving Licence',
+  'Voter ID',
+  'Marksheet / Certificate',
+  'Insurance',
+  'Other',
+] as const;
+
+export type DocumentType = typeof DocumentTypes[number];
+
+export type DocumentEntry = {
+  id: string;
+  title: string;
+  type: DocumentType;
+  note?: string;
+  photoPath?: string;
+  color: string;
+  initial: string;
+};

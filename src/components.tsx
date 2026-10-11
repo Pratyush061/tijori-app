@@ -19,7 +19,8 @@ export type IconName =
   | 'chevron'
   | 'eye'
   | 'card'
-  | 'note';
+  | 'note'
+  | 'document';
 
 type IconProps = {
   name: IconName;
@@ -114,6 +115,13 @@ export function Icon({
         <>
           <Rect {...s} x={4} y={4} width={16} height={16} rx={3} />
           <Path {...s} d="M8 9h8M8 13h8M8 17h5" />
+        </>
+      )}
+      {name === 'document' && (
+        <>
+          <Path {...s} d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <Path {...s} d="M14 2v6h6" />
+          <Path {...s} d="M16 13H8M16 17H8M10 9H8" />
         </>
       )}
     </Svg>

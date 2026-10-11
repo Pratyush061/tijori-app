@@ -78,11 +78,13 @@ function CurrentScreen({ tab }: { tab: TabKey }) {
 }
 
 import { CardsScreen } from './src/CardsScreen';
+import { DocumentsScreen } from './src/DocumentsScreen';
 
 function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [tab, setTab] = useState<TabKey>('vault');
   const [showCards, setShowCards] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
 
   return (
     <View style={styles.root}>
@@ -91,12 +93,14 @@ function App() {
       {unlocked ? (
         showCards ? (
           <CardsScreen onBack={() => setShowCards(false)} />
+        ) : showDocuments ? (
+          <DocumentsScreen onBack={() => setShowDocuments(false)} />
         ) : (
           <>
             <NavBar tab={tab} />
             <View style={styles.content}>
               {tab === 'vault' ? (
-                <VaultScreen onOpenCards={() => setShowCards(true)} onTabSelect={setTab} />
+                <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
               ) : (
                 <CurrentScreen tab={tab} />
               )}
