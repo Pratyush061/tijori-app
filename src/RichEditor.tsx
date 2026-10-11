@@ -1,11 +1,26 @@
 import React, { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
+import {
+  WebView,
+  type WebViewMessageEvent,
+  type WebViewProps,
+} from 'react-native-webview';
 
 // A small, self-contained rich-text editor. The editing surface is a
 // contenteditable document inside a WebView, which lets us control the
 // spacing precisely and use the platform's own formatting engine. It needs
 // no native module beyond react-native-webview, which the app already ships.
+
+// react-native-webview 14.0.1 publishes a broken default type: the class is
+// declared `WebView<P = undefined>`, and `WebViewProps & undefined` collapses
+// to `never`, so `<WebView />` fails to typecheck anywhere. Re-typing the
+// component against its own exported props fixes that without changing the
+// dependency version.
+type WebViewHandle = { injectJavaScript: (script: string) => void };
+
+const TypedWebView = WebView as unknown as React.ComponentType<
+  WebViewProps & { ref?: React.Ref<WebViewHandle> }
+>;
 
 export type RichEditorHandle = {
   getHTML: () => string;
@@ -98,7 +113,7 @@ function buildDocument(initialHTML: string, accent: string) {
 
 export const RichEditor = forwardRef<RichEditorHandle, Props>(
   ({ initialHTML, accent, onChange }, ref) => {
-    const webRef = useRef<WebView>(null);
+    const webRef = useRef<WebViewHandle>(null);
     const latest = useRef(initialHTML);
 
     // Built once so re-renders never reload the WebView and wipe what the
@@ -119,15 +134,17 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
       },
     }));
 
+    const handleMessage = (event: WebViewMessageEvent) => {
+      latest.current = event.nativeEvent.data;
+      onChange?.(latest.current);
+    };
+
     return (
-      <WebView
+      <TypedWebView
         ref={webRef}
         originWhitelist={['*']}
         source={source}
-        onMessage={event => {
-          latest.current = event.nativeEvent.data;
-          onChange?.(latest.current);
-        }}
+        onMessage={handleMessage}
         style={styles.web}
         containerStyle={styles.container}
         keyboardDisplayRequiresUserAction={false}
