@@ -207,7 +207,7 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
       <View style={styles.bigTitleWrap}>
         <Text style={styles.bigTitleSerif}>Good evening</Text>
         <Text style={styles.bigSubtitle}>
-          Everything in your vault is safe and synced.
+          Everything in your vault is stored on this device.
         </Text>
       </View>
 
@@ -217,9 +217,9 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
             <Icon name="shield" size={24} color="#E9C877" />
           </View>
           <View style={styles.flex}>
-            <Text style={styles.heroTitle}>Vault secured</Text>
+            <Text style={styles.heroTitle}>Your vault</Text>
             <Text style={styles.heroMeta}>
-              End-to-end encrypted · backed up 2h ago
+              Stored on this device · no cloud backup yet
             </Text>
           </View>
         </View>
@@ -770,7 +770,6 @@ export function BirthdaysScreen() {
 
 export function SettingsScreen() {
   const [faceId, setFaceId] = React.useState(true);
-  const [sync, setSync] = React.useState(true);
 
   return (
     <ScrollView
@@ -809,18 +808,8 @@ export function SettingsScreen() {
 
       <SectionLabel>Data</SectionLabel>
       <InsetGroup>
-        <KeyValueRow label="iCloud sync" divider={false}>
-          <Switch
-            value={sync}
-            onValueChange={setSync}
-            trackColor={{ true: colors.green }}
-          />
-        </KeyValueRow>
-        <KeyValueRow label="Back up now">
-          <Text style={styles.krowValue}>2h ago</Text>
-        </KeyValueRow>
-        <KeyValueRow label="Export vault">
-          <Chevron />
+        <KeyValueRow label="Cloud backup" divider={false}>
+          <Text style={styles.krowValue}>Not available yet</Text>
         </KeyValueRow>
       </InsetGroup>
 
