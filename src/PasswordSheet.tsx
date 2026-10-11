@@ -12,6 +12,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { Icon } from './components';
 import type { PasswordEntry } from './data';
 import { DraggableSheet, SheetScrollView } from './DraggableSheet';
+import { randomInt } from './storage/crypto';
 import { colors, radius, space } from './theme';
 
 const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Shopping', 'Other'];
@@ -88,17 +89,26 @@ export function PasswordSheet({
     if (genNumbers) charset += nums;
     if (genSymbols) charset += syms;
 
+    const pick = (set: string) => set[randomInt(set.length)];
+
     let newPassword = '';
-    if (genNumbers) newPassword += nums[Math.floor(Math.random() * nums.length)];
-    if (genSymbols) newPassword += syms[Math.floor(Math.random() * syms.length)];
+    if (genNumbers) newPassword += pick(nums);
+    if (genSymbols) newPassword += pick(syms);
 
     for (let i = newPassword.length; i < genLength; i++) {
-      newPassword += charset[Math.floor(Math.random() * charset.length)];
+      newPassword += pick(charset);
     }
 
-    // Shuffle
-    newPassword = newPassword.split('').sort(() => 0.5 - Math.random()).join('');
-    setPassword(newPassword);
+    // Fisher-Yates shuffle over a secure source, so the guaranteed character
+    // classes do not end up in a predictable order.
+    const charsArr = newPassword.split('');
+    for (let i = charsArr.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      const tmp = charsArr[i];
+      charsArr[i] = charsArr[j];
+      charsArr[j] = tmp;
+    }
+    setPassword(charsArr.join(''));
   };
 
   const getPasswordStrength = (pass: string) => {

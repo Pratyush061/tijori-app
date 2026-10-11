@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AsyncStorageDocumentStorage } from '../src/storage/asyncStorage';
+import { initializeVault, lock } from '../src/storage/secureStore';
 
 describe('documentStorage', () => {
   let storage: AsyncStorageDocumentStorage;
@@ -7,6 +8,8 @@ describe('documentStorage', () => {
   beforeEach(async () => {
     storage = new AsyncStorageDocumentStorage();
     await AsyncStorage.clear();
+    lock();
+    await initializeVault('1234');
   });
 
   it('creates and lists documents', async () => {

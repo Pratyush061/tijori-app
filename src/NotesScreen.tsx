@@ -21,8 +21,13 @@ export function NotesScreen() {
   const [selectedEntry, setSelectedEntry] = useState<NoteEntry | null>(null);
 
   const load = async () => {
-    const data = await noteStorage.list();
-    setItems(data);
+    try {
+      const data = await noteStorage.list();
+      setItems(data);
+    } catch (e) {
+      console.warn('Failed to load notes', e);
+      setItems([]);
+    }
   };
 
   useEffect(() => {

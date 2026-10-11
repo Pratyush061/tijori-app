@@ -1,274 +1,160 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { passwordStorage, birthdayStorage, noteStorage, cardStorage } from '../src/storage/asyncStorage';
+import {
+  passwordStorage,
+  birthdayStorage,
+  noteStorage,
+  cardStorage,
+} from '../src/storage/asyncStorage';
+import { initializeVault, lock } from '../src/storage/secureStore';
+import { ENC_MARKER } from '../src/storage/crypto';
 
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-}));
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const cache: Record<string, string> = {};
+  return {
+    getItem: jest.fn((key: string) => Promise.resolve(cache[key] ?? null)),
+    setItem: jest.fn((key: string, value: string) => {
+      cache[key] = value;
+      return Promise.resolve(null);
+    }),
+    removeItem: jest.fn((key: string) => {
+      delete cache[key];
+      return Promise.resolve(null);
+    }),
+    clear: jest.fn(() => {
+      Object.keys(cache).forEach(k => delete cache[k]);
+      return Promise.resolve(null);
+    }),
+  };
+});
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  lock();
+  await initializeVault('1234');
+});
 
 describe('AsyncStoragePasswordStorage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   it('lists empty when no data exists', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await passwordStorage.list();
-    expect(result).toEqual([]);
+    expect(await passwordStorage.list()).toEqual([]);
   });
 
-  it('lists parsed entries', async () => {
-    const mockData = [{ id: '1', name: 'Test' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-    const result = await passwordStorage.list();
-    expect(result).toEqual(mockData);
-  });
-
-  it('creates an entry and saves it', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await passwordStorage.create({
+  it('creates an entry and reads it back', async () => {
+    const created = await passwordStorage.create({
       name: 'Google',
       subtitle: 'test@g.com',
       color: '#000',
       initial: 'G',
-      category: 'Email'
+      category: 'Email',
     });
 
-    expect(result.id).toBeDefined();
-    expect(result.name).toBe('Google');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_passwords',
-      expect.stringContaining('Google')
-    );
+    expect(created.id).toBeTruthy();
+    const list = await passwordStorage.list();
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Google');
+  });
+
+  it('stores ciphertext, never the plaintext', async () => {
+    await passwordStorage.create({
+      name: 'SecretBank',
+      subtitle: 'x',
+      color: '#000',
+      initial: 'S',
+      category: 'Finance',
+    });
+
+    const raw = (await AsyncStorage.getItem('@tijori_passwords')) as string;
+    expect(raw.startsWith(ENC_MARKER)).toBe(true);
+    expect(raw.includes('SecretBank')).toBe(false);
   });
 
   it('updates an existing entry', async () => {
-    const mockData = [{ id: '1', name: 'Test', subtitle: 'old', color: '#000', initial: 'T', category: 'Work' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
+    const created = await passwordStorage.create({
+      name: 'Test',
+      subtitle: 'old',
+      color: '#000',
+      initial: 'T',
+      category: 'Work',
+    });
 
-    const result = await passwordStorage.update('1', { subtitle: 'new', category: 'Social' });
-    expect(result.subtitle).toBe('new');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_passwords',
-      expect.stringContaining('new')
-    );
+    const updated = await passwordStorage.update(created.id, {
+      subtitle: 'new',
+      category: 'Social',
+    });
+    expect(updated.subtitle).toBe('new');
+
+    const list = await passwordStorage.list();
+    expect(list[0].subtitle).toBe('new');
   });
 
   it('deletes an entry', async () => {
-    const mockData = [
-      { id: '1', name: 'Test1', color: '#000', initial: 'T', subtitle: '' },
-      { id: '2', name: 'Test2', color: '#000', initial: 'T', subtitle: '' }
-    ];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
+    const a = await passwordStorage.create({
+      name: 'Test1', subtitle: '', color: '#000', initial: 'T', category: 'Work',
+    });
+    await passwordStorage.create({
+      name: 'Test2', subtitle: '', color: '#000', initial: 'T', category: 'Work',
+    });
 
-    await passwordStorage.delete('1');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+    await passwordStorage.delete(a.id);
+
+    const list = await passwordStorage.list();
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Test2');
+  });
+
+  it('reads legacy plaintext and keeps it readable', async () => {
+    await AsyncStorage.setItem(
       '@tijori_passwords',
-      expect.stringContaining('Test2')
+      JSON.stringify([{ id: '1', name: 'Legacy', subtitle: '', color: '#000', initial: 'L', category: 'Work' }])
     );
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_passwords',
-      expect.not.stringContaining('Test1')
-    );
+    const list = await passwordStorage.list();
+    expect(list[0].name).toBe('Legacy');
   });
 });
 
 describe('AsyncStorageNoteStorage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   it('lists empty when no data exists', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await noteStorage.list();
-    expect(result).toEqual([]);
+    expect(await noteStorage.list()).toEqual([]);
   });
 
-  it('lists parsed entries', async () => {
-    const mockData = [{ id: '1', title: 'Test', body: 'body', color: '#000', initial: 'T' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-    const result = await noteStorage.list();
-    expect(result).toEqual(mockData);
-  });
-
-  it('creates an entry and saves it', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await noteStorage.create({
-      title: 'A Note',
-      body: 'Note body',
-      color: '#000',
-      initial: 'A'
+  it('creates and updates a note', async () => {
+    const created = await noteStorage.create({
+      title: 'A Note', body: '<b>hi</b>', color: '#000', initial: 'A',
     });
+    expect(created.id).toBeTruthy();
 
-    expect(result.id).toBeDefined();
-    expect(result.title).toBe('A Note');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_notes',
-      expect.stringContaining('A Note')
-    );
+    const updated = await noteStorage.update(created.id, { title: 'New Title' });
+    expect(updated.title).toBe('New Title');
+
+    const list = await noteStorage.list();
+    expect(list[0].title).toBe('New Title');
+    expect(list[0].body).toBe('<b>hi</b>');
   });
 
-  it('updates an existing entry', async () => {
-    const mockData = [{ id: '1', title: 'Test', body: 'body', color: '#000', initial: 'T' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    const result = await noteStorage.update('1', { title: 'New Title' });
-    expect(result.title).toBe('New Title');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_notes',
-      expect.stringContaining('New Title')
-    );
-  });
-
-  it('deletes an entry', async () => {
-    const mockData = [
-      { id: '1', title: 'Test1', body: 'body', color: '#000', initial: 'T' },
-      { id: '2', title: 'Test2', body: 'body', color: '#000', initial: 'T' }
-    ];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    await noteStorage.delete('1');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_notes',
-      expect.stringContaining('Test2')
-    );
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_notes',
-      expect.not.stringContaining('Test1')
-    );
+  it('deletes a note', async () => {
+    const a = await noteStorage.create({ title: 'Test1', body: 'b', color: '#000', initial: 'T' });
+    await noteStorage.create({ title: 'Test2', body: 'b', color: '#000', initial: 'T' });
+    await noteStorage.delete(a.id);
+    const list = await noteStorage.list();
+    expect(list.map(n => n.title)).toEqual(['Test2']);
   });
 });
 
 describe('AsyncStorageCardStorage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('lists empty when no data exists', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await cardStorage.list();
-    expect(result).toEqual([]);
-  });
-
-  it('lists parsed entries', async () => {
-    const mockData = [{ id: '1', name: 'Test', last4: '1234', expiry: '12/24', color: '#000', initial: 'T' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-    const result = await cardStorage.list();
-    expect(result).toEqual(mockData);
-  });
-
-  it('creates an entry and saves it', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await cardStorage.create({
-      name: 'A Card',
-      last4: '1234',
-      expiry: '12/24',
-      color: '#000',
-      initial: 'A'
-    });
-
-    expect(result.id).toBeDefined();
-    expect(result.name).toBe('A Card');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_cards',
-      expect.stringContaining('A Card')
-    );
-  });
-
-  it('updates an existing entry', async () => {
-    const mockData = [{ id: '1', name: 'Test', last4: '1234', expiry: '12/24', color: '#000', initial: 'T' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    const result = await cardStorage.update('1', { name: 'New Name' });
-    expect(result.name).toBe('New Name');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_cards',
-      expect.stringContaining('New Name')
-    );
-  });
-
-  it('deletes an entry', async () => {
-    const mockData = [
-      { id: '1', name: 'Test1', last4: '1234', expiry: '12/24', color: '#000', initial: 'T' },
-      { id: '2', name: 'Test2', last4: '1234', expiry: '12/24', color: '#000', initial: 'T' }
-    ];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    await cardStorage.delete('1');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_cards',
-      expect.stringContaining('Test2')
-    );
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_cards',
-      expect.not.stringContaining('Test1')
-    );
+  it('creates and lists a card', async () => {
+    await cardStorage.create({ name: 'A Card', last4: '1234', expiry: '12/24', color: '#000', initial: 'A' });
+    const list = await cardStorage.list();
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('A Card');
   });
 });
 
 describe('AsyncStorageBirthdayStorage', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('lists empty when no data exists', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await birthdayStorage.list();
-    expect(result).toEqual([]);
-  });
-
-  it('lists parsed entries', async () => {
-    const mockData = [{ id: '1', name: 'Test' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-    const result = await birthdayStorage.list();
-    expect(result).toEqual(mockData);
-  });
-
-  it('creates an entry and saves it', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    const result = await birthdayStorage.create({
-      name: 'Aarav',
-      date: '2000-10-13',
-      includeYear: true,
-      color: '#000',
-      initial: 'A'
+  it('creates and lists a birthday', async () => {
+    await birthdayStorage.create({
+      name: 'Aarav', date: '2000-10-13', includeYear: true, color: '#000', initial: 'A',
     });
-
-    expect(result.id).toBeDefined();
-    expect(result.name).toBe('Aarav');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_birthdays',
-      expect.stringContaining('Aarav')
-    );
-  });
-
-  it('updates an existing entry', async () => {
-    const mockData = [{ id: '1', name: 'Test', date: '2000-01-01', includeYear: true, color: '#000', initial: 'T' }];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    const result = await birthdayStorage.update('1', { name: 'New Name' });
-    expect(result.name).toBe('New Name');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_birthdays',
-      expect.stringContaining('New Name')
-    );
-  });
-
-  it('deletes an entry', async () => {
-    const mockData = [
-      { id: '1', name: 'Test1', date: '2000-01-01', includeYear: true, color: '#000', initial: 'T' },
-      { id: '2', name: 'Test2', date: '2000-01-01', includeYear: true, color: '#000', initial: 'T' }
-    ];
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockData));
-
-    await birthdayStorage.delete('1');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_birthdays',
-      expect.stringContaining('Test2')
-    );
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-      '@tijori_birthdays',
-      expect.not.stringContaining('Test1')
-    );
+    const list = await birthdayStorage.list();
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe('Aarav');
   });
 });

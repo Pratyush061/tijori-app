@@ -23,7 +23,12 @@ export function CardsScreen({ onBack }: Props) {
   const [selectedEntry, setSelectedEntry] = useState<CardEntry | null>(null);
 
   const load = async () => {
-    const data = await cardStorage.list();
+    let data: CardEntry[] = [];
+    try {
+      data = await cardStorage.list();
+    } catch (e) {
+      console.warn('Failed to load cards', e);
+    }
     setItems(data);
   };
 
