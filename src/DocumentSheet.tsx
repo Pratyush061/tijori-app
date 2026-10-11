@@ -14,7 +14,7 @@ import RNFS from 'react-native-fs';
 
 import { DocumentTypes } from './data';
 import type { DocumentEntry, DocumentType } from './data';
-import { DraggableSheet } from './DraggableSheet';
+import { DraggableSheet, SheetScrollView } from './DraggableSheet';
 import { Icon } from './components';
 import { colors, radius, space } from './theme';
 
@@ -124,7 +124,7 @@ export function DocumentSheet({
       onSave={handleSave}
       title={entry ? 'Edit Document' : 'New Document'}
     >
-      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
+      <SheetScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <View style={styles.fieldGroup}>
           <TextInput
             style={[styles.input, styles.inputBorder]}
@@ -139,6 +139,7 @@ export function DocumentSheet({
               {DocumentTypes.map(t => (
                 <TouchableOpacity
                   key={t}
+                  activeOpacity={0.7}
                   style={[styles.typeChip, type === t && styles.typeChipActive]}
                   onPress={() => setType(t)}
                 >
@@ -163,12 +164,12 @@ export function DocumentSheet({
           {photoPath ? (
             <View style={styles.photoWrap}>
               <Image source={{ uri: photoPath }} style={styles.photo} />
-              <TouchableOpacity style={styles.removePhoto} onPress={() => setPhotoPath(undefined)}>
+              <TouchableOpacity activeOpacity={0.7} style={styles.removePhoto} onPress={() => setPhotoPath(undefined)}>
                 <Icon name="plus" size={16} color="#FFF" />
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.photoButton} onPress={handlePickImage}>
+            <TouchableOpacity activeOpacity={0.7} style={styles.photoButton} onPress={handlePickImage}>
               <Icon name="plus" size={20} color={colors.blue} />
               <Text style={styles.photoButtonText}>Add Photo</Text>
             </TouchableOpacity>
@@ -176,11 +177,11 @@ export function DocumentSheet({
         </View>
 
         {entry && onDelete && (
-          <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={onDelete}>
             <Text style={styles.deleteButtonText}>Delete Document</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+      </SheetScrollView>
     </DraggableSheet>
   );
 }

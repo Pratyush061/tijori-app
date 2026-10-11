@@ -76,13 +76,13 @@ export function DocumentsScreen({ onBack }: Props) {
   return (
     <View style={styles.flex}>
       <View style={styles.nav}>
-        <TouchableOpacity style={styles.navLeft} onPress={onBack}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.navLeft} onPress={onBack}>
           <Icon name="chevron" size={24} color={colors.blue} />
           <Text style={styles.navBackText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.navTitle}>Documents</Text>
         <View style={styles.navRight}>
-          <TouchableOpacity onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => { setSelectedEntry(null); setSheetVisible(true); }}>
             <Icon name="plus" size={24} color={colors.ink} />
           </TouchableOpacity>
         </View>
@@ -92,7 +92,9 @@ export function DocumentsScreen({ onBack }: Props) {
         {items.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No documents yet</Text>
+            <Text style={styles.emptyHint}>Add your first document to get started.</Text>
             <TouchableOpacity
+              activeOpacity={0.7}
               style={styles.addButton}
               onPress={() => {
                 setSelectedEntry(null);
@@ -115,7 +117,7 @@ export function DocumentsScreen({ onBack }: Props) {
               />
             </View>
 
-            <View style={{ marginTop: space.lg }}>
+            <View style={styles.listContainer}>
               <InsetGroup>
                 {filtered.map((d, i) => (
                   <ListRow
@@ -192,7 +194,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: colors.dim,
+    marginBottom: space.sm,
+  },
+  emptyHint: {
+    fontSize: 15,
+    color: colors.dim,
+    textAlign: 'center',
     marginBottom: space.lg,
+    paddingHorizontal: space.xl,
   },
   addButton: {
     backgroundColor: colors.gold,
@@ -232,5 +241,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  listContainer: {
+    marginTop: space.lg,
   }
 });

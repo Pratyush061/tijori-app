@@ -42,7 +42,7 @@ function buildDocument(initialHTML: string, accent: string) {
 <style>
   html, body { margin: 0; padding: 0; background: transparent; }
   body {
-    padding: 8px 20px 160px 20px;
+    padding: 8px 24px 160px 24px;
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
     font-size: 17px;
     line-height: 1.55;
@@ -50,6 +50,7 @@ function buildDocument(initialHTML: string, accent: string) {
     -webkit-text-size-adjust: 100%;
     overflow-wrap: break-word;
     word-wrap: break-word;
+    overflow-x: hidden;
   }
   #editor { outline: none; min-height: 55vh; }
   #editor:empty:before {
@@ -88,7 +89,26 @@ function buildDocument(initialHTML: string, accent: string) {
 
     function push() {
       if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(editor.innerHTML);
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'html', content: editor.innerHTML }));
+      }
+    }
+
+    function sendState() {
+      if (window.ReactNativeWebView) {
+        var formatBlock = document.queryCommandValue('formatBlock');
+        if (formatBlock) {
+          formatBlock = formatBlock.toLowerCase();
+        }
+        var state = {
+          bold: document.queryCommandState('bold'),
+          italic: document.queryCommandState('italic'),
+          underline: document.queryCommandState('underline'),
+          strikeThrough: document.queryCommandState('strikeThrough'),
+          insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+          insertOrderedList: document.queryCommandState('insertOrderedList'),
+          formatBlock: formatBlock
+        };
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'state', state: state }));
       }
     }
 
@@ -109,10 +129,15 @@ function buildDocument(initialHTML: string, accent: string) {
       sel.addRange(savedRange);
     }
 
-    editor.addEventListener('input', push);
-    editor.addEventListener('blur', push);
-    editor.addEventListener('keyup', push);
-    document.addEventListener('selectionchange', rememberSelection);
+    editor.addEventListener('input', function() { push(); sendState(); });
+    editor.addEventListener('blur', function() { push(); sendState(); });
+    editor.addEventListener('keyup', function() { push(); sendState(); });
+    editor.addEventListener('click', sendState);
+
+    document.addEventListener('selectionchange', function() {
+      rememberSelection();
+      sendState();
+    });
 
     window.__exec = function (command, value) {
       editor.focus();
@@ -121,9 +146,10 @@ function buildDocument(initialHTML: string, accent: string) {
       document.execCommand(command, false, value === undefined ? null : value);
       rememberSelection();
       push();
+      sendState();
     };
 
-    window.__getHTML = push;
+    window.__getHTML = function() { return editor.innerHTML; };
 
     true;
   })();
@@ -132,8 +158,22 @@ function buildDocument(initialHTML: string, accent: string) {
 </html>`;
 }
 
-export const RichEditor = forwardRef<RichEditorHandle, Props>(
-  ({ initialHTML, accent, onChange }, ref) => {
+export type EditorState = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikeThrough?: boolean;
+  insertUnorderedList?: boolean;
+  insertOrderedList?: boolean;
+  formatBlock?: string | null;
+};
+
+type ExtendedProps = Props & {
+  onStateChange?: (state: EditorState) => void;
+};
+
+export const RichEditor = forwardRef<RichEditorHandle, ExtendedProps>(
+  ({ initialHTML, accent, onChange, onStateChange }, ref) => {
     const webRef = useRef<WebViewHandle>(null);
     const latest = useRef(initialHTML);
 
@@ -156,8 +196,19 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
     }));
 
     const handleMessage = (event: WebViewMessageEvent) => {
-      latest.current = event.nativeEvent.data;
-      onChange?.(latest.current);
+      try {
+        const payload = JSON.parse(event.nativeEvent.data);
+        if (payload.type === 'html') {
+          latest.current = payload.content;
+          onChange?.(payload.content);
+        } else if (payload.type === 'state') {
+          onStateChange?.(payload.state);
+        }
+      } catch (e) {
+        // Fallback for earlier plain string messages just in case
+        latest.current = event.nativeEvent.data;
+        onChange?.(latest.current);
+      }
     };
 
     return (

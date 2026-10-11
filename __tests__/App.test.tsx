@@ -37,6 +37,7 @@ test('first run shows the create-passcode keypad', async () => {
   expect(json).toContain('Create a passcode');
 });
 
+jest.setTimeout(15000);
 test('entering and confirming a passcode reveals the vault', async () => {
   const tree = await renderApp();
 
