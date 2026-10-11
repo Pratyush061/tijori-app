@@ -208,3 +208,16 @@ jest.mock('react-native-reanimated', () => {
 // Fix createAnimatedComponent mock
 const ReanimatedMock = jest.requireMock('react-native-reanimated');
 ReanimatedMock.default.createAnimatedComponent = (Component: any) => Component;
+
+// react-native-webview ships ESM (`import ...`), which Jest cannot parse when
+// the package is left untransformed. The rich-text editor only needs a
+// component that renders; stub it with a View, like the other native modules.
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const WebView = React.forwardRef((props, ref) =>
+    React.createElement(View, { ...props, ref })
+  );
+  WebView.displayName = 'WebView';
+  return { __esModule: true, WebView, default: WebView };
+});
