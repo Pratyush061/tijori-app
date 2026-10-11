@@ -80,8 +80,6 @@ export const SheetContext = React.createContext<{
   scrollOffset: Animated.SharedValue<number>;
 } | null>(null);
 
-const AnimatedScrollView = Animated.createAnimatedComponent(RNGHScrollView);
-
 export const SheetScrollView = React.forwardRef<any, ScrollViewProps>(
   (props, ref) => {
     const ctx = useContext(SheetContext);
