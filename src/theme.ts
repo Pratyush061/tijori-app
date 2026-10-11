@@ -39,3 +39,24 @@ export const radius = {
   inset: 16,
   pill: 999,
 } as const;
+
+export const darkColors = {
+  bg: '#000000',
+  card: '#1C1C1E',
+  ink: '#FFFFFF',
+  ink2: '#EBEBF5',
+  dim: '#8E8E93',
+  dim2: '#48484A',
+  sep: 'rgba(84,84,88,0.65)',
+  gold: '#B98A2E',
+  goldDark: '#E9C877',
+  goldSoft: 'rgba(185,138,46,0.25)',
+  heroA: '#2C2C30',
+  heroB: '#1C1C1E',
+  blue: '#0A84FF',
+  pink: '#FF375F',
+  green: '#32D74B',
+  orange: '#FF9F0A',
+  teal: '#64D2FF',
+  indigo: '#5E5CE6',
+} as const;

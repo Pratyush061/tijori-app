@@ -11,7 +11,15 @@ import App from '../App';
 async function renderApp() {
   let tree!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(() => {
+
+    // Need to mock data for vault screen because AsyncStorage returns a string 'true' and the vault screen assumes it's an array for `filter`
+    jest.spyOn(require('../src/storage/asyncStorage').passwordStorage, 'list').mockResolvedValue([]);
+    jest.spyOn(require('../src/storage/asyncStorage').birthdayStorage, 'list').mockResolvedValue([]);
+    jest.spyOn(require('../src/storage/asyncStorage').noteStorage, 'list').mockResolvedValue([]);
+    jest.spyOn(require('../src/storage/asyncStorage').cardStorage, 'list').mockResolvedValue([]);
+
     tree = ReactTestRenderer.create(<App />);
+
   });
   return tree;
 }
