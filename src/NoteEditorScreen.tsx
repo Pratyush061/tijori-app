@@ -1,21 +1,14 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  View,
-  TextInput,
+  ScrollView,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  TouchableOpacity,
   Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import {
-  RichText,
-  Toolbar,
-  useEditorBridge,
-  TenTapStartKit,
-  CoreBridge,
-} from '@10play/tentap-editor';
+
+import { RichEditor, type RichEditorHandle } from './RichEditor';
 import { colors, space } from './theme';
 import type { NoteEntry } from './data';
 import { Icon } from './components';
@@ -27,26 +20,36 @@ type Props = {
   onDelete?: () => void;
 };
 
+const PALETTE = ['#111111', '#FF6B00', '#0A84FF', '#34C759', '#FF2D55', '#AF52DE'];
+
+// Notes created before the rich-text editor are plain text. Turn their line
+// breaks into <br> so they open looking the way they were written.
+function toEditableHTML(body: string) {
+  if (!body) return '';
+  if (/<[a-z][\s\S]*>/i.test(body)) return body;
+  return body
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>');
+}
+
 export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const [title, setTitle] = useState(entry?.title || '');
+  const [showColors, setShowColors] = useState(false);
+  const editorRef = useRef<RichEditorHandle>(null);
 
-  const editor = useEditorBridge({
-    autofocus: false,
-    avoidIosKeyboard: true,
-    initialContent: entry?.body || '',
-    bridgeExtensions: [
-      ...TenTapStartKit,
-      CoreBridge,
-    ],
-  });
+  const run = (command: string, value?: string) => {
+    editorRef.current?.exec(command, value);
+  };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!title.trim()) return;
-    const content = await editor.getHTML();
+    const body = editorRef.current?.getHTML() ?? entry?.body ?? '';
 
     onSave({
       title,
-      body: content,
+      body,
       color: entry?.color || colors.orange,
       initial: title
         .split(' ')
@@ -58,20 +61,22 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-          <Icon name="chevron" color={colors.ink} size={24} />
+        <TouchableOpacity onPress={onClose} style={styles.headerButton} hitSlop={8}>
+          <Icon name="chevron" color={colors.ink} size={22} />
           <Text style={styles.headerButtonText}>Back</Text>
         </TouchableOpacity>
 
-        {entry && onDelete && (
-          <TouchableOpacity onPress={onDelete} style={styles.headerButton}>
+        {entry && onDelete ? (
+          <TouchableOpacity onPress={onDelete} style={styles.headerButton} hitSlop={8}>
             <Text style={styles.deleteButtonText}>Delete</Text>
           </TouchableOpacity>
+        ) : (
+          <View />
         )}
 
-        <TouchableOpacity onPress={handleSave} style={styles.headerButton}>
+        <TouchableOpacity onPress={handleSave} style={styles.headerButton} hitSlop={8}>
           <Text style={styles.saveButtonText}>Save</Text>
         </TouchableOpacity>
       </View>
@@ -84,15 +89,106 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
         onChangeText={setTitle}
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.editorContainer}
-      >
-        <RichText editor={editor} />
-        <Toolbar editor={editor} />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      <View style={styles.editorWrap}>
+        <RichEditor
+          ref={editorRef}
+          initialHTML={toEditableHTML(entry?.body || '')}
+          accent={colors.orange}
+        />
+      </View>
+
+      {showColors && (
+        <View style={styles.colorRow}>
+          {PALETTE.map(c => (
+            <TouchableOpacity
+              key={c}
+              onPress={() => {
+                run('foreColor', c);
+                setShowColors(false);
+              }}
+              style={[styles.swatch, { backgroundColor: c }]}
+              accessibilityLabel={`Text colour ${c}`}
+            />
+          ))}
+        </View>
+      )}
+
+      <View style={styles.toolbar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolbarContent}
+          keyboardShouldPersistTaps="always"
+        >
+          <ToolButton label="B" bold onPress={() => run('bold')} />
+          <ToolButton label="I" italic onPress={() => run('italic')} />
+          <ToolButton label="U" underline onPress={() => run('underline')} />
+          <ToolButton label="S" strike onPress={() => run('strikeThrough')} />
+          <Divider />
+          <ToolButton label="A-" onPress={() => run('fontSize', '2')} />
+          <ToolButton label="A+" onPress={() => run('fontSize', '5')} />
+          <ToolButton label="H1" onPress={() => run('formatBlock', '<h1>')} />
+          <ToolButton label="H2" onPress={() => run('formatBlock', '<h2>')} />
+          <ToolButton label="¶" onPress={() => run('formatBlock', '<p>')} />
+          <Divider />
+          <ToolButton label="•" onPress={() => run('insertUnorderedList')} />
+          <ToolButton label="1." onPress={() => run('insertOrderedList')} />
+          <ToolButton label="❝" onPress={() => run('formatBlock', '<blockquote>')} />
+          <ToolButton label="</>" onPress={() => run('formatBlock', '<pre>')} />
+          <Divider />
+          <ToolButton
+            label="A"
+            color={colors.orange}
+            onPress={() => setShowColors(v => !v)}
+          />
+        </ScrollView>
+      </View>
+    </View>
   );
+}
+
+function ToolButton({
+  label,
+  onPress,
+  bold,
+  italic,
+  underline,
+  strike,
+  color,
+}: {
+  label: string;
+  onPress: () => void;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.toolButton}
+      accessibilityRole="button"
+      accessibilityLabel={`Format ${label}`}
+    >
+      <Text
+        style={[
+          styles.toolButtonText,
+          color ? { color } : null,
+          bold ? styles.bold : null,
+          italic ? styles.italic : null,
+          underline ? styles.underline : null,
+          strike ? styles.strike : null,
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function Divider() {
+  return <View style={styles.divider} />;
 }
 
 const styles = StyleSheet.create({
@@ -102,8 +198,10 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: space.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.sep,
   },
@@ -111,6 +209,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.xs,
+    paddingHorizontal: space.xs,
   },
   headerButtonText: {
     fontSize: 17,
@@ -123,15 +222,64 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 17,
     fontWeight: '600',
-    color: colors.ink,
+    color: colors.blue,
   },
   titleInput: {
     fontSize: 24,
     fontWeight: 'bold',
-    padding: space.lg,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
     color: colors.ink,
   },
-  editorContainer: {
+  editorWrap: {
     flex: 1,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    gap: space.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+  },
+  swatch: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  toolbar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+    backgroundColor: colors.bg,
+  },
+  toolbarContent: {
+    alignItems: 'center',
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: space.xs,
+  },
+  toolButton: {
+    minWidth: 40,
+    height: 38,
+    paddingHorizontal: space.sm,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  toolButtonText: {
+    fontSize: 16,
+    color: colors.ink,
+  },
+  bold: { fontWeight: '700' },
+  italic: { fontStyle: 'italic' },
+  underline: { textDecorationLine: 'underline' },
+  strike: { textDecorationLine: 'line-through' },
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    height: 24,
+    backgroundColor: colors.sep,
+    marginHorizontal: space.xs,
   },
 });
