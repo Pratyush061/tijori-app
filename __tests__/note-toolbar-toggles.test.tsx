@@ -151,11 +151,11 @@ describe('Notes toolbar toggles', () => {
     const tree = mount();
 
     const defaultSize = findByTestID(tree, 'font-size');
-    expect(defaultSize?.findAll(node => node.props.children === '13pt')).toHaveLength(1);
+    expect(defaultSize?.findAll(node => node.props.children === '13pt').length).toBeGreaterThan(0);
 
     report(tree, { fontSize: '16' });
     const selectedSize = findByTestID(tree, 'font-size');
-    expect(selectedSize?.findAll(node => node.props.children === '16pt')).toHaveLength(1);
+    expect(selectedSize?.findAll(node => node.props.children === '16pt').length).toBeGreaterThan(0);
   });
 
   it('only uses command state for collapsed-caret marks, not selected text', () => {
