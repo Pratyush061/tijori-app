@@ -35,7 +35,7 @@ function findByLabel(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
 async function tapByLabel(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
   const node = findByLabel(tree, label);
   if (!node) {
-    throw new Error(`Element with accessibilityLabel=\"${label}\" not found`);
+    throw new Error(`Element with accessibilityLabel="${label}" not found`);
   }
   await ReactTestRenderer.act(async () => {
     node.props.onPress();
@@ -59,7 +59,7 @@ function findByButtonText(tree: ReactTestRenderer.ReactTestRenderer, text: strin
 async function tapByButtonText(tree: ReactTestRenderer.ReactTestRenderer, text: string) {
   const node = findByButtonText(tree, text);
   if (!node) {
-    throw new Error(`Element with button text \"${text}\" not found`);
+    throw new Error(`Element with button text "${text}" not found`);
   }
   await ReactTestRenderer.act(async () => {
     node.props.onPress();
