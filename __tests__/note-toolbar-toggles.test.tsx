@@ -167,7 +167,9 @@ describe('Notes toolbar toggles', () => {
     expect(html).toContain("return pendingFormatState('bold');");
     expect(html).toContain('return pendingFormatState(command);');
     expect(html).toContain("if (hasAny(names, ['b', 'strong'])) return true;");
-    expect(html).toContain('if (hasAny(names, HEADINGS)) return false;');
+    expect(html).toContain('function executeBoldInHeading(heading)');
+    expect(html).toContain("if (heading && !hasAny(names, ['b', 'strong']))");
+    expect(html).toContain('if (heading) return pendingBoldForCurrentCaret(heading);');
     expect(html).not.toContain("return document.queryCommandState('bold') === true;");
     expect(html).not.toContain('return document.queryCommandState(command) === true;');
   });
