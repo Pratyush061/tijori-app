@@ -1,7 +1,9 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Alert,
   DeviceEventEmitter,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -21,14 +23,16 @@ import {
   SectionLabel,
 } from './components';
 import type { IconName } from './components';
-import { getDaysAway, formatBirthdayDate } from './data';
+import { getDaysAway, formatBirthdayDate, getUpcomingAge } from './data';
 import type { PasswordEntry, Birthday, NoteEntry, CardEntry, DocumentEntry } from './data';
 import { passwordStorage, birthdayStorage, noteStorage, cardStorage, documentStorage } from './storage/asyncStorage';
-import { changePasscode } from './storage/secureStore';
+import { changePasscode, getAutoLockTimeout, setAutoLockTimeout } from './storage/secureStore';
+import { calculateVaultHealth } from './health';
 import { Keypad, PasscodeDots } from './PasscodeKeypad';
 import { PasswordSheet } from './PasswordSheet';
 import { BirthdaySheet } from './BirthdaySheet';
 import { Calendar } from './Calendar';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { colors, radius, space } from './theme';
 
 export const serifFont = Platform.select({
@@ -36,6 +40,13 @@ export const serifFont = Platform.select({
   android: 'serif',
   default: 'serif',
 });
+
+export function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 /* ------------------------------------------------------------------- lock */
 
@@ -151,57 +162,12 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
         return match ? parseInt(match[1], 10) : 0;
       };
 
-      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
-      let scoreDeduction = 0;
-      const weakPasswords: PasswordEntry[] = [];
-      const passSet = new Set<string>();
-      const reusedSet = new Set<string>();
-
-      ps.forEach(p => {
-        if (!p.password) return;
-
-        // Reused check
-        if (passSet.has(p.password)) {
-          reusedSet.add(p.password);
-        } else {
-          passSet.add(p.password);
-        }
-      });
-
-      ps.forEach(p => {
-        let isWeak = false;
-        let isReused = false;
-        let isOld = false;
-
-        if (p.password) {
-          let score = 0;
-          if (p.password.length >= 8) score += 1;
-          if (p.password.length >= 12) score += 1;
-          if (/[A-Z]/.test(p.password)) score += 1;
-          if (/[a-z]/.test(p.password)) score += 1;
-          if (/[0-9]/.test(p.password)) score += 1;
-          if (/[^A-Za-z0-9]/.test(p.password)) score += 1;
-
-          if (score < 3) isWeak = true;
-          if (reusedSet.has(p.password)) isReused = true;
-
-          const ts = extractTs(p.id);
-          if (ts > 0 && ts < oneYearAgo) isOld = true;
-        } else {
-          isWeak = true; // empty password
-        }
-
-        if (isWeak || isReused || isOld) {
-          weakPasswords.push(p);
-          scoreDeduction += 10;
-        }
-      });
-
-      setHealthScore(Math.max(0, 100 - scoreDeduction));
-      setHealthAlerts(weakPasswords);
+      const healthResult = calculateVaultHealth(ps);
+      setHealthScore(healthResult.score);
+      setHealthAlerts(healthResult.alertEntries);
 
       const upcoming = bs.filter(b => getDaysAway(b.date) <= 30).length;
-      const alerts = weakPasswords.length;
+      const alerts = healthResult.alerts.length;
 
       setStats({
         totalItems: ps.length + bs.length + ns.length + cs.length + ds.length,
@@ -246,7 +212,7 @@ export function VaultScreen({ onOpenCards, onOpenDocuments, onTabSelect }: Vault
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.bigTitleWrap}>
-        <Text style={styles.bigTitleSerif}>Good evening</Text>
+        <Text style={styles.bigTitleSerif}>{getTimeGreeting()}</Text>
         <Text style={styles.bigSubtitle}>
           Everything in your vault is stored on this device.
         </Text>
@@ -407,58 +373,17 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
     }
     setItems(stored);
 
-    const extractTs = (id: string) => {
-      const match = id.match(/^(\d+)/);
-      return match ? parseInt(match[1], 10) : 0;
-    };
-
-    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
-    const weakPasswords: PasswordEntry[] = [];
-    const passSet = new Set<string>();
-    const reusedSet = new Set<string>();
-
-    stored.forEach(p => {
-      if (!p.password) return;
-      if (passSet.has(p.password)) {
-        reusedSet.add(p.password);
-      } else {
-        passSet.add(p.password);
-      }
-    });
-
-    stored.forEach(p => {
-      let isWeak = false;
-      let isReused = false;
-      let isOld = false;
-
-      if (p.password) {
-        let score = 0;
-        if (p.password.length >= 8) score += 1;
-        if (p.password.length >= 12) score += 1;
-        if (/[A-Z]/.test(p.password)) score += 1;
-        if (/[a-z]/.test(p.password)) score += 1;
-        if (/[0-9]/.test(p.password)) score += 1;
-        if (/[^A-Za-z0-9]/.test(p.password)) score += 1;
-
-        if (score < 3) isWeak = true;
-        if (reusedSet.has(p.password)) isReused = true;
-
-        const ts = extractTs(p.id);
-        if (ts > 0 && ts < oneYearAgo) isOld = true;
-      } else {
-        isWeak = true;
-      }
-
-      if (isWeak || isReused || isOld) {
-        weakPasswords.push(p);
-      }
-    });
-
-    setHealthAlerts(weakPasswords);
+    const healthResult = calculateVaultHealth(stored);
+    setHealthAlerts(healthResult.alertEntries);
   };
 
   React.useEffect(() => {
     loadItems();
+    const sub = DeviceEventEmitter.addListener('actionAdd', () => {
+      setSelectedEntry(null);
+      setSheetVisible(true);
+    });
+    return () => sub.remove();
   }, []);
 
   const handleSave = async (entry: Partial<PasswordEntry>) => {
@@ -551,20 +476,28 @@ export function PasswordsScreen({ initialShowHealthAlerts }: { initialShowHealth
       </ScrollView>
 
       {filteredItems.length === 0 ? (
-        <View style={styles.empty}>
-          <Icon name="key" size={48} color={colors.dim2} />
-          <Text style={styles.emptyTitle}>No passwords yet</Text>
-          <Text style={styles.emptyHint}>Keep your accounts secure and easily accessible.</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => {
-              setSelectedEntry(null);
-              setSheetVisible(true);
-            }}
-          >
-            <Text style={styles.addButtonText}>Add Password</Text>
-          </TouchableOpacity>
-        </View>
+        items.length === 0 ? (
+          <View style={styles.empty}>
+            <Icon name="key" size={48} color={colors.dim2} />
+            <Text style={styles.emptyTitle}>No passwords yet</Text>
+            <Text style={styles.emptyHint}>Keep your accounts secure and easily accessible.</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                setSelectedEntry(null);
+                setSheetVisible(true);
+              }}
+            >
+              <Text style={styles.addButtonText}>Add Password</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.empty}>
+            <Icon name="search" size={44} color={colors.dim2} />
+            <Text style={styles.emptyTitle}>No passwords match</Text>
+            <Text style={styles.emptyHint}>Try a different search term or category filter.</Text>
+          </View>
+        )
       ) : (
         <>
           {healthAlerts.length > 0 && !showHealthAlertsOnly && (
@@ -682,9 +615,43 @@ export function BirthdaysScreen() {
     }
   };
 
-  const sortedItems = [...items].sort((a, b) => getDaysAway(a.date) - getDaysAway(b.date));
-  const next = sortedItems.length > 0 ? sortedItems[0] : null;
-  const upcoming = sortedItems.length > 1 ? sortedItems.slice(1) : [];
+  const { next, upcomingByMonth } = React.useMemo(() => {
+    const sorted = [...items].sort((a, b) => getDaysAway(a.date) - getDaysAway(b.date));
+    const nextItem = sorted.length > 0 ? sorted[0] : null;
+    const upcomingItems = sorted.length > 1 ? sorted.slice(1) : [];
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const map = new Map<string, Birthday[]>();
+
+    upcomingItems.forEach(b => {
+      const parts = b.date.split('-');
+      const mIdx = parseInt(parts[1], 10) - 1;
+      const mName = monthNames[mIdx] || 'Upcoming';
+      if (!map.has(mName)) {
+        map.set(mName, []);
+      }
+      map.get(mName)!.push(b);
+    });
+
+    const groups = Array.from(map.entries()).map(([month, bdays]) => ({ month, items: bdays }));
+
+    return {
+      next: nextItem,
+      upcomingByMonth: groups,
+    };
+  }, [items]);
+
+  const handleWish = (bday: Birthday) => {
+    const age = bday.includeYear ? getUpcomingAge(bday.date) : null;
+    const msg = age
+      ? `Happy ${age}th Birthday, ${bday.name}! 🎉 Wishing you an incredible year ahead!`
+      : `Happy Birthday, ${bday.name}! 🎉 Wishing you a wonderful day!`;
+    Clipboard.setString(msg);
+    Alert.alert('Birthday Greeting Copied', `"${msg}"\n\nCopied to your clipboard!`);
+  };
 
   const markedDates = items.map(i => i.date);
 
@@ -742,40 +709,57 @@ export function BirthdaysScreen() {
                 <Monogram label={next.initial} color={next.color} size={54} round />
                 <View style={styles.flex}>
                   <Text style={styles.nextUpName}>{next.name}</Text>
-                  <Text style={styles.nextUpDate}>{formatBirthdayDate(next.date)}</Text>
+                  <Text style={styles.nextUpDate}>
+                    {formatBirthdayDate(next.date)}
+                    {next.includeYear && getUpcomingAge(next.date) ? ` · Turning ${getUpcomingAge(next.date)}` : ''}
+                  </Text>
                 </View>
-                <View style={styles.wishButton}>
+                <TouchableOpacity
+                  style={styles.wishButton}
+                  onPress={() => handleWish(next)}
+                  accessibilityLabel="Wish"
+                  accessibilityRole="button"
+                >
                   <Text style={styles.wishButtonText}>Wish</Text>
-                </View>
+                </TouchableOpacity>
               </TouchableOpacity>
             )}
 
-            {upcoming.length > 0 && (
+            {upcomingByMonth.length > 0 && (
               <>
-                <SectionLabel>Coming up</SectionLabel>
-                <InsetGroup>
-                  {upcoming.map((b, i) => {
-                    const daysAway = getDaysAway(b.date);
-                    return (
-                      <ListRow
-                        key={b.id}
-                        divider={i > 0}
-                        leading={<Monogram label={b.initial} color={b.color} round />}
-                        title={b.name}
-                        subtitle={formatBirthdayDate(b.date)}
-                        onPress={() => {
-                          setSelectedEntry(b);
-                          setSheetVisible(true);
-                        }}
-                        right={
-                          <View style={styles.badge}>
-                            <Text style={styles.badgeText}>in {daysAway} days</Text>
-                          </View>
-                        }
-                      />
-                    );
-                  })}
-                </InsetGroup>
+                {upcomingByMonth.map(group => (
+                  <View key={group.month}>
+                    <SectionLabel>{group.month}</SectionLabel>
+                    <InsetGroup>
+                      {group.items.map((b, i) => {
+                        const daysAway = getDaysAway(b.date);
+                        const age = b.includeYear ? getUpcomingAge(b.date) : null;
+                        const daysText =
+                          daysAway === 0 ? 'Today! 🎉' : daysAway === 1 ? 'Tomorrow' : `in ${daysAway} days`;
+                        return (
+                          <ListRow
+                            key={b.id}
+                            divider={i > 0}
+                            leading={<Monogram label={b.initial} color={b.color} round />}
+                            title={b.name}
+                            subtitle={`${formatBirthdayDate(b.date)}${age ? ` · Turning ${age}` : ''}`}
+                            onPress={() => {
+                              setSelectedEntry(b);
+                              setSheetVisible(true);
+                            }}
+                            right={
+                              <View style={[styles.badge, daysAway === 0 && styles.badgeToday]}>
+                                <Text style={[styles.badgeText, daysAway === 0 && styles.badgeTextToday]}>
+                                  {daysText}
+                                </Text>
+                              </View>
+                            }
+                          />
+                        );
+                      })}
+                    </InsetGroup>
+                  </View>
+                ))}
               </>
             )}
 
@@ -801,19 +785,23 @@ export function BirthdaysScreen() {
               <View style={styles.calendarBirthdaysWrap}>
                 <SectionLabel>{`Birthdays on ${formatBirthdayDate(selectedDate)}`}</SectionLabel>
                 <InsetGroup>
-                  {selectedDateBirthdays.map((b, i) => (
-                    <ListRow
-                      key={b.id}
-                      divider={i > 0}
-                      leading={<Monogram label={b.initial} color={b.color} round />}
-                      title={b.name}
-                      onPress={() => {
-                        setSelectedEntry(b);
-                        setSheetVisible(true);
-                      }}
-                      right={<Chevron />}
-                    />
-                  ))}
+                  {selectedDateBirthdays.map((b, i) => {
+                    const age = b.includeYear ? getUpcomingAge(b.date) : null;
+                    return (
+                      <ListRow
+                        key={b.id}
+                        divider={i > 0}
+                        leading={<Monogram label={b.initial} color={b.color} round />}
+                        title={b.name}
+                        subtitle={age ? `Turning ${age}${b.note ? ` · ${b.note}` : ''}` : b.note || undefined}
+                        onPress={() => {
+                          setSelectedEntry(b);
+                          setSheetVisible(true);
+                        }}
+                        right={<Chevron />}
+                      />
+                    );
+                  })}
                 </InsetGroup>
               </View>
             )}
@@ -855,6 +843,62 @@ export function SettingsScreen() {
     ok: boolean;
   } | null>(null);
 
+  const [autoLockTimeout, setAutoLockTimeoutState] = React.useState(0);
+
+  React.useEffect(() => {
+    getAutoLockTimeout().then(setAutoLockTimeoutState);
+  }, []);
+
+  const getAutoLockLabel = (secs: number) => {
+    if (secs === 0) return 'Immediately';
+    if (secs === 60) return 'After 1 minute';
+    if (secs === 300) return 'After 5 minutes';
+    if (secs === 900) return 'After 15 minutes';
+    if (secs < 0) return 'Never';
+    return `${Math.round(secs / 60)} minutes`;
+  };
+
+  const handleSelectAutoLock = () => {
+    Alert.alert('Auto-Lock', 'Choose when to lock Tijori after leaving the app', [
+      {
+        text: 'Immediately',
+        onPress: async () => {
+          await setAutoLockTimeout(0);
+          setAutoLockTimeoutState(0);
+        },
+      },
+      {
+        text: 'After 1 minute',
+        onPress: async () => {
+          await setAutoLockTimeout(60);
+          setAutoLockTimeoutState(60);
+        },
+      },
+      {
+        text: 'After 5 minutes',
+        onPress: async () => {
+          await setAutoLockTimeout(300);
+          setAutoLockTimeoutState(300);
+        },
+      },
+      {
+        text: 'After 15 minutes',
+        onPress: async () => {
+          await setAutoLockTimeout(900);
+          setAutoLockTimeoutState(900);
+        },
+      },
+      {
+        text: 'Never',
+        onPress: async () => {
+          await setAutoLockTimeout(-1);
+          setAutoLockTimeoutState(-1);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const reset = () => {
     setCurrent('');
     setNext('');
@@ -884,13 +928,83 @@ export function SettingsScreen() {
     reset();
   };
 
+  const handleProfilePress = () => {
+    Alert.alert(
+      'Vault Profile',
+      'Account Owner: Pratyush Jain\nEmail: pratyushjj02@gmail.com\n\nSecurity: Zero-Knowledge Local AES-256 Vault\nStorage: On-device encrypted',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handlePasscodeInfo = () => {
+    Alert.alert(
+      'Passcode Lock',
+      'Passcode protection is Active.\n\nAll stored passwords, birthdays, notes, cards, and documents are encrypted using AES-256-CBC with PBKDF2 key derivation.\n\nTo update your passcode, tap "Change passcode" below.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleLockNow = () => {
+    Alert.alert(
+      'Lock Vault',
+      'Lock your Tijori vault now? You will need your passcode to unlock.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Lock Now',
+          style: 'destructive',
+          onPress: () => {
+            DeviceEventEmitter.emit('vaultLock');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCloudBackupInfo = () => {
+    Alert.alert(
+      'Cloud Backup',
+      'Tijori is designed with offline-first zero-knowledge architecture. All cryptographic keys and records remain strictly on your device and are never uploaded to any remote server.',
+      [{ text: 'Understood' }]
+    );
+  };
+
+  const handleVersionInfo = () => {
+    Alert.alert(
+      'Tijori',
+      'Version 1.0.0 (Release Build)\nArchitecture: React Native + AES-256-CBC\nDeveloper: Pratyush Jain\n\nAll systems operational.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleHelpSupport = () => {
+    const url = 'https://github.com/Pratyush061/tijori-app';
+    Linking.canOpenURL(url)
+      .then(supported => {
+        if (supported) {
+          Linking.openURL(url);
+        } else {
+          Alert.alert('Help & Support', `GitHub Repository:\n${url}`);
+        }
+      })
+      .catch(() => {
+        Alert.alert('Help & Support', `GitHub Repository:\n${url}`);
+      });
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}
     >
       <InsetGroup>
-        <View style={styles.profile}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={handleProfilePress}
+          style={styles.profile}
+          accessibilityRole="button"
+          accessibilityLabel="User Profile: Pratyush Jain"
+        >
           <View style={styles.profileAvatar}>
             <Text style={styles.profileInitials}>PJ</Text>
           </View>
@@ -899,17 +1013,34 @@ export function SettingsScreen() {
             <Text style={styles.profileEmail}>pratyushjj02@gmail.com</Text>
           </View>
           <Chevron />
-        </View>
+        </TouchableOpacity>
       </InsetGroup>
 
       <SectionLabel>Security</SectionLabel>
       <InsetGroup>
-        <KeyValueRow label="Passcode lock" divider={false}>
-          <Text style={styles.krowValue}>On</Text>
+        <KeyValueRow
+          label="Passcode lock"
+          divider={false}
+          onPress={handlePasscodeInfo}
+        >
+          <View style={styles.rowTail}>
+            <Text style={styles.krowValue}>On</Text>
+            <Chevron />
+          </View>
         </KeyValueRow>
-        <KeyValueRow label="Auto-lock">
-          <Text style={styles.krowValue}>Immediately</Text>
-        </KeyValueRow>
+        <TouchableOpacity
+          activeOpacity={0.6}
+          onPress={handleSelectAutoLock}
+          style={styles.settingsRow}
+          accessibilityLabel="Auto-lock"
+          accessibilityRole="button"
+        >
+          <Text style={styles.settingsRowLabel}>Auto-lock</Text>
+          <View style={styles.rowTail}>
+            <Text style={styles.krowValue}>{getAutoLockLabel(autoLockTimeout)}</Text>
+            <Chevron />
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity
           activeOpacity={0.6}
           onPress={() => {
@@ -921,6 +1052,19 @@ export function SettingsScreen() {
           style={styles.settingsRow}
         >
           <Text style={styles.settingsRowLabel}>Change passcode</Text>
+          <Chevron />
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.6}
+          onPress={handleLockNow}
+          style={styles.settingsRow}
+          accessibilityLabel="Lock vault now"
+          accessibilityRole="button"
+        >
+          <View style={styles.lockNowLeading}>
+            <Icon name="lock" size={17} color={colors.red} />
+            <Text style={styles.lockNowLabel}>Lock vault now</Text>
+          </View>
           <Chevron />
         </TouchableOpacity>
       </InsetGroup>
@@ -988,17 +1132,34 @@ export function SettingsScreen() {
 
       <SectionLabel>Data</SectionLabel>
       <InsetGroup>
-        <KeyValueRow label="Cloud backup" divider={false}>
-          <Text style={styles.krowValue}>Not available yet</Text>
+        <KeyValueRow
+          label="Cloud backup"
+          divider={false}
+          onPress={handleCloudBackupInfo}
+        >
+          <View style={styles.rowTail}>
+            <Text style={styles.krowValue}>Local only (Zero-knowledge)</Text>
+            <Chevron />
+          </View>
         </KeyValueRow>
       </InsetGroup>
 
       <SectionLabel>About</SectionLabel>
       <InsetGroup>
-        <KeyValueRow label="Version" divider={false}>
-          <Text style={styles.krowValue}>1.0.0</Text>
+        <KeyValueRow
+          label="Version"
+          divider={false}
+          onPress={handleVersionInfo}
+        >
+          <View style={styles.rowTail}>
+            <Text style={styles.krowValue}>1.0.0</Text>
+            <Chevron />
+          </View>
         </KeyValueRow>
-        <KeyValueRow label="Help & support">
+        <KeyValueRow
+          label="Help & support"
+          onPress={handleHelpSupport}
+        >
           <Chevron />
         </KeyValueRow>
       </InsetGroup>
@@ -1054,6 +1215,16 @@ const styles = StyleSheet.create({
   settingsRowLabel: {
     fontSize: 15,
     color: colors.ink,
+  },
+  lockNowLeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  lockNowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.red,
   },
   changeForm: {
     paddingHorizontal: space.lg,
@@ -1452,6 +1623,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.goldDark,
+  },
+  badgeToday: {
+    backgroundColor: 'rgba(255, 55, 95, 0.15)',
+  },
+  badgeTextToday: {
+    color: colors.pink,
   },
 
   profile: {

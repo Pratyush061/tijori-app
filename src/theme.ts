@@ -24,6 +24,7 @@ export const colors = {
   orange: '#FF9F0A',
   teal: '#30B0C7',
   indigo: '#5E5CE6',
+  red: '#FF3B30',
 } as const;
 
 export const space = {
@@ -39,3 +40,33 @@ export const radius = {
   inset: 16,
   pill: 999,
 } as const;
+
+export type NoteTintKey = 'default' | 'mint' | 'lemon' | 'peach' | 'sky' | 'lavender';
+
+export const NOTE_TINTS: Record<NoteTintKey, string> = {
+  default: '#FFFFFF',
+  mint: '#EBF6EF',
+  lemon: '#FFFBEA',
+  peach: '#FFF2EC',
+  sky: '#EBF5FB',
+  lavender: '#F5EFFB',
+} as const;
+
+export const NOTE_TINT_BORDERS: Record<NoteTintKey, string> = {
+  default: '#E5E5EA',
+  mint: '#D0EBD8',
+  lemon: '#FCEFC2',
+  peach: '#FED9C9',
+  sky: '#CEE5F6',
+  lavender: '#E4D3F5',
+} as const;
+
+export const NOTE_TINT_NAMES: Record<NoteTintKey, string> = {
+  default: 'Default',
+  mint: 'Mint',
+  lemon: 'Lemon',
+  peach: 'Peach',
+  sky: 'Sky',
+  lavender: 'Lavender',
+} as const;
+

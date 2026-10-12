@@ -1,21 +1,13 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import {
   WebView,
   type WebViewMessageEvent,
   type WebViewProps,
 } from 'react-native-webview';
 
-// A small, self-contained rich-text editor. The editing surface is a
-// contenteditable document inside a WebView, which lets us control the
-// spacing precisely and use the platform's own formatting engine. It needs
-// no native module beyond react-native-webview, which the app already ships.
+import { colors } from './theme';
 
-// react-native-webview 14.0.1 publishes a broken default type: the class is
-// declared `WebView<P = undefined>`, and `WebViewProps & undefined` collapses
-// to `never`, so `<WebView />` fails to typecheck anywhere. Re-typing the
-// component against its own exported props fixes that without changing the
-// dependency version.
 type WebViewHandle = { injectJavaScript: (script: string) => void };
 
 const TypedWebView = WebView as unknown as React.ComponentType<
@@ -24,25 +16,66 @@ const TypedWebView = WebView as unknown as React.ComponentType<
 
 export type RichEditorHandle = {
   getHTML: () => string;
+  getHtml: () => Promise<string> | string;
   exec: (command: string, value?: string) => void;
+  toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => void;
+  focus: () => void;
+  focusEnd: () => void;
+  focusToEnd: () => void;
+  setBackgroundColor: (color: string) => void;
+};
+
+export type EditorState = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikeThrough?: boolean;
+  insertUnorderedList?: boolean;
+  insertOrderedList?: boolean;
+  formatBlock?: string | null;
+};
+
+export type FormatStates = {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikeThrough: boolean;
 };
 
 type Props = {
-  initialHTML: string;
-  accent: string;
+  initialHTML?: string;
+  initialHtml?: string;
+  accent?: string;
+  backgroundColor?: string;
   onChange?: (html: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  onStateChange?: (state: EditorState) => void;
+  onFormatChange?: (formats: FormatStates) => void;
 };
 
-function buildDocument(initialHTML: string, accent: string) {
+function buildDocument(initialHTML: string, accent: string, backgroundColor: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <style>
-  html, body { margin: 0; padding: 0; background: transparent; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    background-color: ${backgroundColor || '#FFFFFF'};
+  }
   body {
-    padding: 8px 24px 160px 24px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    height: 100%;
+    padding: 12px 20px 180px 20px;
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
     font-size: 17px;
     line-height: 1.55;
@@ -51,8 +84,15 @@ function buildDocument(initialHTML: string, accent: string) {
     overflow-wrap: break-word;
     word-wrap: break-word;
     overflow-x: hidden;
+    box-sizing: border-box;
   }
-  #editor { outline: none; min-height: 55vh; }
+  #editor {
+    flex: 1;
+    min-height: 100%;
+    outline: none;
+    box-sizing: border-box;
+    cursor: text;
+  }
   #editor:empty:before {
     content: "Start typing\\2026";
     color: #b0b0b5;
@@ -85,11 +125,30 @@ function buildDocument(initialHTML: string, accent: string) {
 <script>
   (function () {
     var editor = document.getElementById('editor');
+    window.__editor = editor;
     var savedRange = null;
+
+    function cleanOrphanedTags() {
+      var sel = window.getSelection();
+      var activeNode = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).startContainer : null;
+      var emptyTags = editor.querySelectorAll('b:empty, i:empty, u:empty, s:empty, strike:empty, span:empty');
+      for (var i = 0; i < emptyTags.length; i++) {
+        var el = emptyTags[i];
+        if (activeNode && (el === activeNode || el.contains(activeNode))) continue;
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }
+    }
+
+    function getCleanHTML() {
+      cleanOrphanedTags();
+      var html = editor.innerHTML;
+      html = html.replace(/<([b|i|u|s]|strike)>\\s*<\\/\\1>/gi, '');
+      return html;
+    }
 
     function push() {
       if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'html', content: editor.innerHTML }));
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'html', content: getCleanHTML() }));
       }
     }
 
@@ -112,6 +171,23 @@ function buildDocument(initialHTML: string, accent: string) {
       }
     }
 
+    function ensureCursorVisible() {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      var range = sel.getRangeAt(0);
+      var rect = range.getBoundingClientRect();
+      if (rect.top === 0 && rect.bottom === 0) {
+        var node = range.startContainer;
+        if (node.nodeType === 3) node = node.parentNode;
+        if (node && node.getBoundingClientRect) rect = node.getBoundingClientRect();
+      }
+      var viewportHeight = window.innerHeight;
+      var bottomMargin = 70;
+      if (rect.bottom > viewportHeight - bottomMargin) {
+        window.scrollBy({ top: rect.bottom - (viewportHeight - bottomMargin) + 20, behavior: 'smooth' });
+      }
+    }
+
     function rememberSelection() {
       var sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
@@ -129,27 +205,67 @@ function buildDocument(initialHTML: string, accent: string) {
       sel.addRange(savedRange);
     }
 
-    editor.addEventListener('input', function() { push(); sendState(); });
-    editor.addEventListener('blur', function() { push(); sendState(); });
-    editor.addEventListener('keyup', function() { push(); sendState(); });
+    function focusAtEnd() {
+      editor.focus();
+      var range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      rememberSelection();
+      sendState();
+      ensureCursorVisible();
+    }
+    window.__focusEnd = focusAtEnd;
+
+    document.addEventListener('click', function(e) {
+      if (e.target === document.body || e.target === document.documentElement) {
+        focusAtEnd();
+        return;
+      }
+      if (e.target === editor) {
+        var last = editor.lastElementChild;
+        if (!last || e.clientY > last.getBoundingClientRect().bottom) {
+          focusAtEnd();
+        }
+      }
+    });
+
+    editor.addEventListener('focus', function() {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'focus' }));
+      }
+    });
+    editor.addEventListener('blur', function() {
+      push();
+      sendState();
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'blur' }));
+      }
+    });
+    editor.addEventListener('input', function() { push(); sendState(); ensureCursorVisible(); });
+    editor.addEventListener('keyup', function() { push(); sendState(); ensureCursorVisible(); });
     editor.addEventListener('click', sendState);
 
     document.addEventListener('selectionchange', function() {
       rememberSelection();
       sendState();
+      ensureCursorVisible();
     });
 
     window.__exec = function (command, value) {
       editor.focus();
       restoreSelection();
-      document.execCommand('styleWithCSS', false, true);
+      document.execCommand('styleWithCSS', false, false);
       document.execCommand(command, false, value === undefined ? null : value);
       rememberSelection();
       push();
       sendState();
+      ensureCursorVisible();
     };
 
-    window.__getHTML = function() { return editor.innerHTML; };
+    window.__getHTML = function() { return getCleanHTML(); };
 
     true;
   })();
@@ -158,40 +274,77 @@ function buildDocument(initialHTML: string, accent: string) {
 </html>`;
 }
 
-export type EditorState = {
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strikeThrough?: boolean;
-  insertUnorderedList?: boolean;
-  insertOrderedList?: boolean;
-  formatBlock?: string | null;
-};
-
-type ExtendedProps = Props & {
-  onStateChange?: (state: EditorState) => void;
-};
-
-export const RichEditor = forwardRef<RichEditorHandle, ExtendedProps>(
-  ({ initialHTML, accent, onChange, onStateChange }, ref) => {
+export const RichEditor = forwardRef<RichEditorHandle, Props>(
+  (
+    {
+      initialHTML = '',
+      initialHtml = '',
+      accent = colors.orange,
+      backgroundColor = '#FFFFFF',
+      onChange,
+      onFocus,
+      onBlur,
+      onStateChange,
+      onFormatChange,
+    },
+    ref
+  ) => {
+    const rawInitial = initialHTML || initialHtml || '';
     const webRef = useRef<WebViewHandle>(null);
-    const latest = useRef(initialHTML);
+    const latest = useRef(rawInitial);
 
-    // Built once so re-renders never reload the WebView and wipe what the
-    // user has typed.
     const source = useMemo(
-      () => ({ html: buildDocument(initialHTML, accent) }),
+      () => ({ html: buildDocument(rawInitial, accent, backgroundColor) }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       []
     );
 
+    useEffect(() => {
+      if (backgroundColor) {
+        const script = `document.documentElement.style.backgroundColor = '${backgroundColor}'; document.body.style.backgroundColor = '${backgroundColor}'; true;`;
+        webRef.current?.injectJavaScript(script);
+      }
+    }, [backgroundColor]);
+
+    const sanitizeHtml = (html: string) => {
+      if (!html) return '';
+      return html
+        .replace(/<([b|i|u|s]|strike)>\s*<\/\1>/gi, '')
+        .replace(/<span\s*[^>]*>\s*<\/span>/gi, '');
+    };
+
     useImperativeHandle(ref, () => ({
-      getHTML: () => latest.current,
+      getHTML: () => sanitizeHtml(latest.current),
+      getHtml: () => Promise.resolve(sanitizeHtml(latest.current)),
       exec: (command: string, value?: string) => {
+        if (command === 'focusEnd' || command === 'focusToEnd') {
+          webRef.current?.injectJavaScript('window.__focusEnd(); true;');
+          return;
+        }
         const payload = `window.__exec(${JSON.stringify(command)}, ${
           value === undefined ? 'undefined' : JSON.stringify(value)
         }); true;`;
         webRef.current?.injectJavaScript(payload);
+      },
+      toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
+        const payload = `window.__exec(${JSON.stringify(format)}); true;`;
+        webRef.current?.injectJavaScript(payload);
+      },
+      focus: () => {
+        webRef.current?.injectJavaScript(
+          'if (window.__editor) window.__editor.focus(); true;'
+        );
+      },
+      focusEnd: () => {
+        webRef.current?.injectJavaScript('window.__focusEnd(); true;');
+      },
+      focusToEnd: () => {
+        webRef.current?.injectJavaScript('window.__focusEnd(); true;');
+      },
+      setBackgroundColor: (color: string) => {
+        webRef.current?.injectJavaScript(
+          `document.documentElement.style.backgroundColor = '${color}'; document.body.style.backgroundColor = '${color}'; true;`
+        );
       },
     }));
 
@@ -203,38 +356,67 @@ export const RichEditor = forwardRef<RichEditorHandle, ExtendedProps>(
           onChange?.(payload.content);
         } else if (payload.type === 'state') {
           onStateChange?.(payload.state);
+          if (onFormatChange) {
+            onFormatChange({
+              bold: !!payload.state.bold,
+              italic: !!payload.state.italic,
+              underline: !!payload.state.underline,
+              strikeThrough: !!payload.state.strikeThrough,
+            });
+          }
+        } else if (payload.type === 'focus') {
+          onFocus?.();
+        } else if (payload.type === 'blur') {
+          onBlur?.();
         }
-      } catch (e) {
-        // Fallback for earlier plain string messages just in case
+      } catch {
         latest.current = event.nativeEvent.data;
         onChange?.(latest.current);
       }
     };
 
     return (
-      <TypedWebView
-        ref={webRef}
-        originWhitelist={['*']}
-        source={source}
-        onMessage={handleMessage}
-        style={styles.web}
-        containerStyle={styles.container}
-        keyboardDisplayRequiresUserAction={false}
-        hideKeyboardAccessoryView
-        showsVerticalScrollIndicator={false}
-        setSupportMultipleWindows={false}
-        androidLayerType="hardware"
-      />
+      <TouchableOpacity
+        activeOpacity={1}
+        style={[styles.container, { backgroundColor }]}
+        accessibilityLabel="Canvas"
+        testID="canvas-tap-area"
+        onPress={() => {
+          webRef.current?.injectJavaScript('window.__focusEnd(); true;');
+        }}
+      >
+        <TypedWebView
+          ref={webRef}
+          originWhitelist={['*']}
+          source={source}
+          onMessage={handleMessage}
+          style={[styles.web, { backgroundColor }]}
+          containerStyle={[styles.webContainer, { backgroundColor }]}
+          keyboardDisplayRequiresUserAction={false}
+          hideKeyboardAccessoryView
+          showsVerticalScrollIndicator={false}
+          setSupportMultipleWindows={false}
+          androidLayerType="hardware"
+        />
+      </TouchableOpacity>
     );
   }
 );
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  webContainer: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   web: {
     flex: 1,
-    backgroundColor: 'transparent',
-  },
-  container: {
-    backgroundColor: 'transparent',
+    width: '100%',
+    height: '100%',
   },
 });

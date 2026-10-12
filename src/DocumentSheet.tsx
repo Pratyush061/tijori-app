@@ -117,6 +117,17 @@ export function DocumentSheet({
   };
 
 
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Document',
+      'Are you sure you want to delete this document? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+      ]
+    );
+  };
+
   return (
     <DraggableSheet
       visible={visible}
@@ -177,7 +188,7 @@ export function DocumentSheet({
         </View>
 
         {entry && onDelete && (
-          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={confirmDelete}>
             <Text style={styles.deleteButtonText}>Delete Document</Text>
           </TouchableOpacity>
         )}

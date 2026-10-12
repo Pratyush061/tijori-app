@@ -9,13 +9,17 @@ import {
   View,
 } from 'react-native';
 
-import { Chevron, Icon, InsetGroup, ListRow, Monogram } from './components';
+import { Chevron, Icon, ListRow, Monogram } from './components';
 import type { NoteEntry } from './data';
 import { noteStorage } from './storage/asyncStorage';
 import { NoteEditorScreen } from './NoteEditorScreen';
-import { colors, space } from './theme';
+import { colors, space, NOTE_TINTS, NOTE_TINT_BORDERS } from './theme';
 
-export function NotesScreen() {
+type Props = {
+  onEditingChange?: (isEditing: boolean) => void;
+};
+
+export function NotesScreen({ onEditingChange }: Props = {}) {
   const [items, setItems] = useState<NoteEntry[]>([]);
   const [search, setSearch] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
@@ -35,6 +39,18 @@ export function NotesScreen() {
     load();
   }, []);
 
+  // Broadcast editor visibility to App.tsx to suppress duplicate NavBar
+  useEffect(() => {
+    DeviceEventEmitter.emit('noteEditorVisibility', editorVisible);
+    onEditingChange?.(editorVisible);
+  }, [editorVisible, onEditingChange]);
+
+  useEffect(() => {
+    return () => {
+      DeviceEventEmitter.emit('noteEditorVisibility', false);
+    };
+  }, []);
+
   // The nav bar's "+" emits this so the button opens the note editor.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('actionAdd', () => {
@@ -44,13 +60,22 @@ export function NotesScreen() {
     return () => sub.remove();
   }, []);
 
-  const handleSave = async (entry: Partial<NoteEntry>) => {
-    if (selectedEntry) {
+  const handleSave = async (entry: Partial<NoteEntry>): Promise<NoteEntry | undefined> => {
+    let result: NoteEntry | undefined;
+    if (entry.id) {
+      await noteStorage.update(entry.id, entry);
+      const list = await noteStorage.list();
+      result = list.find(item => item.id === entry.id);
+    } else if (selectedEntry) {
       await noteStorage.update(selectedEntry.id, entry);
+      const list = await noteStorage.list();
+      result = list.find(item => item.id === selectedEntry.id);
     } else {
-      await noteStorage.create(entry as Omit<NoteEntry, 'id'>);
+      result = await noteStorage.create(entry as Omit<NoteEntry, 'id'>);
+      setSelectedEntry(result);
     }
     load();
+    return result;
   };
 
   const handleDelete = async () => {
@@ -106,6 +131,8 @@ export function NotesScreen() {
             <Text style={styles.emptyHint}>Add your first note to get started.</Text>
             <TouchableOpacity
               style={styles.addButton}
+              accessibilityRole="button"
+              accessibilityLabel="Add Note"
               onPress={() => {
                 setSelectedEntry(null);
                 setEditorVisible(true);
@@ -114,34 +141,51 @@ export function NotesScreen() {
               <Text style={styles.addButtonText}>Add Note</Text>
             </TouchableOpacity>
           </View>
+        ) : filtered.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>No notes match</Text>
+            <Text style={styles.emptyHint}>Try a different search term.</Text>
+          </View>
         ) : (
           <>
-            <View style={{ marginTop: space.lg }}>
-              <InsetGroup>
-                {filtered.map((n, i) => {
-                  let dateStr = '';
-                  if (n.id.includes('-')) {
-                    const timestampStr = n.id.split('-')[0];
-                    const timestamp = parseInt(timestampStr, 36);
-                    if (!isNaN(timestamp)) {
-                      dateStr = new Date(timestamp).toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      });
-                    }
-                  }
-                  if (!dateStr) {
-                    dateStr = new Date().toLocaleDateString('en-GB', {
+            <View style={styles.cardList}>
+              {filtered.map(n => {
+                const tintKey = n.tint || 'default';
+                const tintBg = NOTE_TINTS[tintKey] || NOTE_TINTS.default;
+                const tintBorder = NOTE_TINT_BORDERS[tintKey] || colors.sep;
+                let dateStr = '';
+                if (n.id.includes('-')) {
+                  const timestampStr = n.id.split('-')[0];
+                  const timestamp = parseInt(timestampStr, 36);
+                  if (!isNaN(timestamp)) {
+                    dateStr = new Date(timestamp).toLocaleDateString('en-GB', {
                       day: 'numeric',
                       month: 'short',
-                      year: 'numeric'
+                      year: 'numeric',
                     });
                   }
-                  return (
+                }
+                if (!dateStr) {
+                  dateStr = new Date().toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  });
+                }
+                return (
+                  <View
+                    key={n.id}
+                    style={[
+                      styles.noteCard,
+                      {
+                        backgroundColor: tintBg,
+                        borderColor: tintBorder,
+                      },
+                    ]}
+                    accessibilityLabel={`Note: ${n.title}`}
+                  >
                     <ListRow
-                      key={n.id}
-                      divider={i > 0}
+                      divider={false}
                       leading={<Monogram label={n.initial} color={n.color} round />}
                       title={n.title}
                       subtitle={`${dateStr} · ${stripHtml(n.body).split('\n')[0]}`}
@@ -151,13 +195,15 @@ export function NotesScreen() {
                       }}
                       right={<Chevron />}
                     />
-                  );
-                })}
-              </InsetGroup>
+                  </View>
+                );
+              })}
             </View>
 
             <TouchableOpacity
-              style={[styles.addButton, { alignSelf: 'center', marginTop: space.xl, paddingHorizontal: space.xl, paddingVertical: space.sm }]}
+              style={[styles.addButton, styles.addBottomButton]}
+              accessibilityRole="button"
+              accessibilityLabel="Add Note"
               onPress={() => {
                 setSelectedEntry(null);
                 setEditorVisible(true);
@@ -217,5 +263,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  addBottomButton: {
+    alignSelf: 'center',
+    marginTop: space.xl,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.sm,
+  },
+  cardList: {
+    marginTop: space.lg,
+    gap: space.sm,
+  },
+  noteCard: {
+    marginHorizontal: space.md,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
 });

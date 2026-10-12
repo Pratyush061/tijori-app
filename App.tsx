@@ -4,9 +4,10 @@
  * @format
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   StatusBar,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
   View,
   TouchableOpacity,
   DeviceEventEmitter,
+  Keyboard,
 } from 'react-native';
 
 import { Icon, TabBar } from './src/components';
@@ -28,7 +30,7 @@ import {
 } from './src/screens';
 import { NotesScreen } from './src/NotesScreen';
 import { PasscodeSetupScreen } from './src/PasscodeSetupScreen';
-import { isVaultInitialized, unlockVault } from './src/storage/secureStore';
+import { isVaultInitialized, unlockVault, lock, getAutoLockTimeout } from './src/storage/secureStore';
 import { colors, space } from './src/theme';
 
 const TOP_INSET =
@@ -121,6 +123,39 @@ function App() {
   const [tab, setTab] = useState<TabKey | 'passwords-health'>('vault');
   const [showCards, setShowCards] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [isNoteEditing, setIsNoteEditing] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('noteEditorVisibility', (visible: boolean) => {
+      setIsNoteEditing(visible);
+    });
+    const lockSub = DeviceEventEmitter.addListener('vaultLock', () => {
+      lock();
+      setPhase('locked');
+    });
+    return () => {
+      sub.remove();
+      lockSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const s1 = Keyboard.addListener(showEvent, () => setIsKeyboardOpen(true));
+    const s2 = Keyboard.addListener(hideEvent, () => setIsKeyboardOpen(false));
+    const s3 = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardOpen(true));
+    const s4 = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardOpen(false));
+
+    return () => {
+      s1.remove();
+      s2.remove();
+      s3.remove();
+      s4.remove();
+    };
+  }, []);
 
   // Decide on first render whether the vault has been set up yet, so the user
   // sees either the create-passcode screen or the unlock screen.
@@ -141,6 +176,42 @@ function App() {
       alive = false;
     };
   }, []);
+
+  const lastBackgroundTime = useRef<number | null>(null);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (phase !== 'unlocked') return;
+
+      const timeoutSeconds = await getAutoLockTimeout();
+      if (timeoutSeconds < 0) {
+        // Never auto-lock
+        return;
+      }
+
+      if (nextState === 'background' || nextState === 'inactive') {
+        lastBackgroundTime.current = Date.now();
+        if (timeoutSeconds === 0) {
+          // Immediately
+          lock();
+          setPhase('locked');
+        }
+      } else if (nextState === 'active') {
+        if (lastBackgroundTime.current && timeoutSeconds > 0) {
+          const elapsed = (Date.now() - lastBackgroundTime.current) / 1000;
+          if (elapsed >= timeoutSeconds) {
+            lock();
+            setPhase('locked');
+          }
+        }
+        lastBackgroundTime.current = null;
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [phase]);
 
   const handleUnlock = async (passcode: string) => {
     const ok = await unlockVault(passcode);
@@ -166,11 +237,13 @@ function App() {
         <DocumentsScreen onBack={() => setShowDocuments(false)} />
       ) : (
         <>
-          <NavBar
-            tab={tab === 'passwords-health' ? 'passwords' : tab}
-            onSettings={() => setTab('settings')}
-            onAdd={() => DeviceEventEmitter.emit('actionAdd')}
-          />
+          {!(tab === 'notes' && isNoteEditing) && (
+            <NavBar
+              tab={tab === 'passwords-health' ? 'passwords' : tab}
+              onSettings={() => setTab('settings')}
+              onAdd={() => DeviceEventEmitter.emit('actionAdd')}
+            />
+          )}
           <View style={styles.content}>
             {tab === 'vault' ? (
               <VaultScreen onOpenCards={() => setShowCards(true)} onOpenDocuments={() => setShowDocuments(true)} onTabSelect={setTab} />
@@ -180,7 +253,15 @@ function App() {
               <CurrentScreen tab={tab} />
             )}
           </View>
-          <TabBar active={tab === 'passwords-health' ? 'passwords' : tab} onChange={setTab as any} />
+          {!isKeyboardOpen && (
+            <TabBar
+              active={tab === 'passwords-health' ? 'passwords' : tab}
+              onChange={(nextTab: any) => {
+                setIsNoteEditing(false);
+                setTab(nextTab);
+              }}
+            />
+          )}
         </>
       )}
     </GestureHandlerRootView>

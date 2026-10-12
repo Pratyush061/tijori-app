@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -55,12 +56,24 @@ export function CardSheet({
       note,
       color: entry?.color || colors.blue,
       initial: name
-        .split(' ')
+        .trim()
+        .split(/\s+/)
         .map(n => n.charAt(0).toUpperCase())
         .slice(0, 2)
         .join(''),
     });
     onClose();
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Card',
+      'Are you sure you want to delete this card? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+      ]
+    );
   };
 
   return (
@@ -108,7 +121,7 @@ export function CardSheet({
         </View>
 
         {entry && onDelete && (
-          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity activeOpacity={0.7} style={styles.deleteButton} onPress={confirmDelete}>
             <Text style={styles.deleteButtonText}>Delete Card</Text>
           </TouchableOpacity>
         )}

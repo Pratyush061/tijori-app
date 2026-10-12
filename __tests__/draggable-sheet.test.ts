@@ -39,4 +39,20 @@ describe('calculateDestination', () => {
     // e.g. pos = 200, vel = 0 => returns 200
     expect(calculateDestination(200, 0, height)).toBe(200);
   });
+
+  describe('Gesture.Pan velocity in px/s (normalized automatically)', () => {
+    it('settles to full screen (0) when flicked up at -500 px/s', () => {
+      expect(calculateDestination(500, -500, height)).toBe(0);
+    });
+
+    it('closes (returns height) when flicked down at 500 px/s', () => {
+      expect(calculateDestination(500, 500, height)).toBe(height);
+    });
+
+    it('leaves the sheet in the middle when released slowly at 100 px/s', () => {
+      // 100 px/s = 0.1 px/ms. proj = 500 + 0.1 * 140 = 514
+      // 514 is between 150 (FULL_ZONE) and 750 (CLOSE_ZONE)
+      expect(calculateDestination(500, 100, height)).toBe(500);
+    });
+  });
 });

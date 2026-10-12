@@ -109,24 +109,31 @@ export function CardsScreen({ onBack }: Props) {
               />
             </View>
 
-            <View style={styles.listContainer}>
-              <InsetGroup>
-                {filtered.map((c, i) => (
-                  <ListRow
-                    key={c.id}
-                    divider={i > 0}
-                    leading={<Monogram label={c.initial} color={c.color} round />}
-                    title={c.name}
-                    subtitle={`•••• ${c.last4}  |  Exp ${c.expiry}`}
-                    onPress={() => {
-                      setSelectedEntry(c);
-                      setSheetVisible(true);
-                    }}
-                    right={<Chevron />}
-                  />
-                ))}
-              </InsetGroup>
-            </View>
+            {filtered.length === 0 ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>No cards match</Text>
+                <Text style={styles.emptyHint}>Try a different search term.</Text>
+              </View>
+            ) : (
+              <View style={styles.listContainer}>
+                <InsetGroup>
+                  {filtered.map((c, i) => (
+                    <ListRow
+                      key={c.id}
+                      divider={i > 0}
+                      leading={<Monogram label={c.initial} color={c.color} round />}
+                      title={c.name}
+                      subtitle={`•••• ${c.last4}  |  Exp ${c.expiry}`}
+                      onPress={() => {
+                        setSelectedEntry(c);
+                        setSheetVisible(true);
+                      }}
+                      right={<Chevron />}
+                    />
+                  ))}
+                </InsetGroup>
+              </View>
+            )}
           </>
         )}
       </ScrollView>

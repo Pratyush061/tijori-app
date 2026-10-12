@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   StyleSheet,
   Switch,
   Text,
@@ -41,7 +42,9 @@ export function BirthdaySheet({
         setNote(entry.note || '');
       } else {
         setName('');
-        setDate(new Date().toISOString().slice(0, 10)); // Default to today
+        const now = new Date();
+        const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        setDate(localToday);
         setIncludeYear(true);
         setNote('');
       }
@@ -57,12 +60,24 @@ export function BirthdaySheet({
       note,
       color: entry?.color || colors.pink, // use pink as default for bdays
       initial: name
-        .split(' ')
-        .map(n => n.charAt(0).toUpperCase())
+        .trim()
+        .split(/\s+/)
+        .map(word => word.charAt(0).toUpperCase())
         .slice(0, 2)
         .join(''),
     });
     onClose();
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Birthday',
+      'Are you sure you want to delete this birthday? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+      ]
+    );
   };
 
   return (
@@ -109,7 +124,7 @@ export function BirthdaySheet({
         </View>
 
         {entry && onDelete && (
-          <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity style={styles.deleteButton} onPress={confirmDelete}>
             <Text style={styles.deleteButtonText}>Delete Birthday</Text>
           </TouchableOpacity>
         )}

@@ -40,6 +40,19 @@ export function lock(): void {
   activeKey = null;
 }
 
+export const AUTOLOCK_KEY = '@tijori_autolock';
+
+export async function getAutoLockTimeout(): Promise<number> {
+  const val = await AsyncStorage.getItem(AUTOLOCK_KEY);
+  if (val == null) return 0; // Default: Immediately (0 seconds)
+  const parsed = parseInt(val, 10);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+export async function setAutoLockTimeout(seconds: number): Promise<void> {
+  await AsyncStorage.setItem(AUTOLOCK_KEY, String(seconds));
+}
+
 export async function isVaultInitialized(): Promise<boolean> {
   const raw = await AsyncStorage.getItem(VERIFIER_KEY);
   return !!raw;

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   StyleSheet,
   Switch,
   Text,
@@ -15,7 +16,7 @@ import { DraggableSheet, SheetScrollView } from './DraggableSheet';
 import { randomInt } from './storage/crypto';
 import { colors, radius, space } from './theme';
 
-const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Shopping', 'Other'];
+const CATEGORIES = ['Email', 'Banking', 'Social', 'Work', 'Government / ID', 'Shopping', 'Other'];
 
 type Props = {
   visible: boolean;
@@ -37,14 +38,22 @@ export function PasswordSheet({
   const [password, setPassword] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [favorite, setFavorite] = useState(false);
+  const [note, setNote] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<any>(null);
 
   const [genVisible, setGenVisible] = useState(false);
   const [genLength, setGenLength] = useState(16);
   const [genNumbers, setGenNumbers] = useState(true);
   const [genSymbols, setGenSymbols] = useState(true);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     setCopied(false);
@@ -56,12 +65,14 @@ export function PasswordSheet({
         setPassword(entry.password || '');
         setCategory(entry.category || CATEGORIES[0]);
         setFavorite(entry.favorite || false);
+        setNote(entry.note || '');
       } else {
         setName('');
         setSubtitle('');
         setPassword('');
         setCategory(CATEGORIES[0]);
         setFavorite(false);
+        setNote('');
       }
       setGenVisible(false);
     }
@@ -75,6 +86,7 @@ export function PasswordSheet({
       password,
       category,
       favorite,
+      note,
       color: entry?.color || colors.blue,
       initial: name.charAt(0).toUpperCase(),
     });
@@ -132,11 +144,23 @@ export function PasswordSheet({
     if (password) {
       Clipboard.setString(password);
       setCopied(true);
-      setTimeout(() => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
         Clipboard.setString('');
         setCopied(false);
       }, 3000);
     }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Password',
+      'Are you sure you want to delete this password? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+      ]
+    );
   };
 
   return (
@@ -257,7 +281,18 @@ export function PasswordSheet({
           </View>
         </View>
 
-        {entry && (
+        <View style={styles.fieldGroup}>
+          <TextInput
+            style={[styles.input, styles.noteInput]}
+            placeholder="Notes (optional)"
+            placeholderTextColor={colors.dim}
+            value={note}
+            onChangeText={setNote}
+            multiline
+          />
+        </View>
+
+        {password.length > 0 && (
           <TouchableOpacity
             style={[styles.deleteButton, styles.copyButton]}
             onPress={handleCopy}
@@ -274,7 +309,7 @@ export function PasswordSheet({
         )}
 
         {entry && onDelete && (
-          <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+          <TouchableOpacity style={styles.deleteButton} onPress={confirmDelete}>
             <Text style={styles.deleteButtonText}>Delete Password</Text>
           </TouchableOpacity>
         )}
@@ -463,5 +498,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  noteInput: {
+    minHeight: 64,
+    paddingTop: 12,
+    paddingBottom: 12,
+    textAlignVertical: 'top',
   },
 });

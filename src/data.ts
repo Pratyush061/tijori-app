@@ -1,4 +1,6 @@
-import { colors } from './theme';
+import { colors, type NoteTintKey } from './theme';
+export type { NoteTintKey };
+
 
 export type PasswordEntry = {
   id: string;
@@ -9,6 +11,7 @@ export type PasswordEntry = {
   password?: string;
   category?: string;
   favorite?: boolean;
+  note?: string;
 };
 
 export type Birthday = {
@@ -35,8 +38,27 @@ export function getDaysAway(dateStr: string): number {
     nextBday.setFullYear(today.getFullYear() + 1);
   }
 
-  const diffTime = Math.abs(nextBday.getTime() - today.getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffTime = nextBday.getTime() - today.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
+export function getUpcomingAge(dateStr: string): number | null {
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return null;
+  const birthYear = parseInt(parts[0], 10);
+  if (isNaN(birthYear) || birthYear < 1900) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const bdayMonth = parseInt(parts[1], 10) - 1;
+  const bdayDate = parseInt(parts[2], 10);
+
+  let nextBday = new Date(today.getFullYear(), bdayMonth, bdayDate);
+  let targetYear = today.getFullYear();
+  if (nextBday < today) {
+    targetYear += 1;
+  }
+  return targetYear - birthYear;
 }
 
 export function formatBirthdayDate(dateStr: string): string {
@@ -171,6 +193,9 @@ export type NoteEntry = {
   body: string;
   color: string;
   initial: string;
+  tint?: NoteTintKey;
+  updatedAt?: number;
+  createdAt?: number;
 };
 
 export const notes: NoteEntry[] = [

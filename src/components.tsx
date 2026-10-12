@@ -223,11 +223,28 @@ export function KeyValueRow({
   label,
   children,
   divider = true,
+  onPress,
 }: {
   label: string;
   children: React.ReactNode;
   divider?: boolean;
+  onPress?: () => void;
 }) {
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.6}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[styles.krow, divider && styles.rowDivider]}
+      >
+        <Text style={styles.krowLabel}>{label}</Text>
+        {children}
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={[styles.krow, divider && styles.rowDivider]}>
       <Text style={styles.krowLabel}>{label}</Text>

@@ -58,10 +58,10 @@ export function Calendar({ selectedDate, onSelectDate, markedDates = [] }: Calen
       <View style={styles.header}>
         <Text style={styles.monthName}>{monthName}</Text>
         <View style={styles.navArrows}>
-          <TouchableOpacity onPress={goPrevMonth} style={styles.arrowBtn}>
+          <TouchableOpacity onPress={goPrevMonth} style={[styles.arrowBtn, { transform: [{ rotate: '180deg' }] }]} accessibilityLabel="Previous month">
             <Icon name="chevron" size={20} color={colors.ink} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={goNextMonth} style={[styles.arrowBtn, { transform: [{ rotate: '180deg' }] }]}>
+          <TouchableOpacity onPress={goNextMonth} style={styles.arrowBtn} accessibilityLabel="Next month">
             <Icon name="chevron" size={20} color={colors.ink} />
           </TouchableOpacity>
         </View>

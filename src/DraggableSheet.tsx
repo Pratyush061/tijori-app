@@ -6,6 +6,7 @@ import React, {
   useContext,
 } from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,6 +20,7 @@ import type { ScrollViewProps } from 'react-native';
 import {
   Gesture,
   GestureDetector,
+  GestureHandlerRootView,
   ScrollView as RNGHScrollView,
 } from 'react-native-gesture-handler';
 import Animated, {
@@ -54,9 +56,13 @@ export function calculateDestination(
   height: number
 ): number {
   'worklet';
-  const projected = position + velocity * VELOCITY_PROJECTION;
-  const flickUp = velocity < -FLICK;
-  const flickDown = velocity > FLICK;
+  // Normalize velocity: RNGH Gesture.Pan provides velocity in px/s (e.g. 500 px/s),
+  // while legacy flick calculation expects px/ms (e.g. 0.5 px/ms).
+  // If magnitude is > 10, normalize from px/s to px/ms.
+  const v = Math.abs(velocity) > 10 ? velocity / 1000 : velocity;
+  const projected = position + v * VELOCITY_PROJECTION;
+  const flickUp = v < -FLICK;
+  const flickDown = v > FLICK;
 
   if (flickUp || projected <= height * FULL_ZONE) {
     return 0;
@@ -86,27 +92,39 @@ export const SheetScrollView = React.forwardRef<any, ScrollViewProps>(
   (props, ref) => {
     const ctx = useContext(SheetContext);
 
+    const setScrollViewRef = (node: any) => {
+      if (typeof ref === 'function') {
+        ref(node);
+      } else if (ref && 'current' in ref) {
+        ref.current = node;
+      }
+
+      if (ctx?.scrollViewRef) {
+        ctx.scrollViewRef.current = node;
+      }
+    };
+
+    const handleScroll = (event: any) => {
+      if (ctx) {
+        ctx.scrollOffset.value = event.nativeEvent.contentOffset.y;
+      }
+
+      if (props.onScroll) {
+        props.onScroll(event);
+      }
+    };
+
     if (!ctx) {
-      return <RNGHScrollView ref={ref} {...props} />;
+      return React.createElement(RNGHScrollView, { ...props, ref });
     }
 
-    return (
-      <RNGHScrollView
-        ref={(node: any) => {
-          if (typeof ref === 'function') ref(node);
-          else if (ref) ref.current = node;
-
-          if (ctx.scrollViewRef) ctx.scrollViewRef.current = node;
-        }}
-        onScroll={event => {
-          ctx.scrollOffset.value = event.nativeEvent.contentOffset.y;
-          if (props.onScroll) props.onScroll(event);
-        }}
-        scrollEventThrottle={16}
-        bounces={false}
-        {...props}
-      />
-    );
+    return React.createElement(RNGHScrollView, {
+      ...props,
+      ref: setScrollViewRef,
+      onScroll: handleScroll,
+      scrollEventThrottle: 16,
+      bounces: false,
+    });
   }
 );
 
@@ -176,11 +194,16 @@ export function DraggableSheet({
     translateY.value = withSpring(restPosition(containerHeight), OPEN_SPRING);
   }, [visible, containerHeight, restPosition, translateY]);
 
+  const dismissKeyboard = useCallback(() => {
+    Keyboard.dismiss();
+  }, []);
+
   const panGesture = Gesture.Pan()
     .enabled(dragEnabled)
     .simultaneousWithExternalGesture(scrollViewRef)
     .onStart(() => {
       isDraggingSheet.value = false;
+      runOnJS(dismissKeyboard)();
     })
     .onChange(event => {
       const h = containerHeight || 1;
@@ -204,7 +227,7 @@ export function DraggableSheet({
       if (isDraggingSheet.value) {
         const dest = calculateDestination(
           translateY.value,
-          event.velocityY,
+          event.velocityY / 1000,
           h
         );
         if (dest === h) {
@@ -238,78 +261,103 @@ export function DraggableSheet({
     return { opacity };
   });
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="none"
-      transparent
-      statusBarTranslucent
-      onRequestClose={() => animateOut(handleClose)}
-    >
-      <View
-        style={styles.overlay}
-        onLayout={event => {
-          const h = event.nativeEvent.layout.height;
-          if (h > 0 && h !== containerHeight) setContainerHeight(h);
-        }}
-      >
-        <Animated.View style={[styles.backdrop, backdropStyle]}>
-          <Pressable
-            style={styles.backdropPress}
-            onPress={() => animateOut(handleClose)}
-          />
-        </Animated.View>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardView}
-          pointerEvents="box-none"
-        >
-          <GestureDetector gesture={panGesture}>
-            <Animated.View
-              style={[
-                styles.sheet,
-                sheetStyle,
-                { height: containerHeight || undefined },
-              ]}
-            >
-              <View style={styles.handleArea}>
-                <View style={styles.handle} />
-                <View style={styles.header}>
-                  <TouchableOpacity
-                    onPress={() => animateOut(handleClose)}
-                    style={styles.headerButton}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.headerButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.title}>{title}</Text>
-                  <TouchableOpacity
-                    onPress={() => animateOut(handleSave)}
-                    style={styles.headerButton}
-                    hitSlop={8}
-                  >
-                    <Text
-                      style={[styles.headerButtonText, styles.headerButtonStrong]}
-                    >
-                      Save
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <SheetContext.Provider value={{ scrollViewRef, scrollOffset }}>
-                {children}
-              </SheetContext.Provider>
-            </Animated.View>
-          </GestureDetector>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+  return React.createElement(
+    Modal,
+    {
+      visible,
+      animationType: 'none',
+      transparent: true,
+      statusBarTranslucent: true,
+      onRequestClose: () => animateOut(handleClose),
+    },
+    React.createElement(
+      GestureHandlerRootView,
+      { style: styles.modalRoot },
+      React.createElement(
+        View,
+        {
+          style: styles.overlay,
+          onLayout: event => {
+            const h = event.nativeEvent.layout.height;
+            if (h > 0 && h !== containerHeight) setContainerHeight(h);
+          },
+        },
+        React.createElement(
+          Animated.View,
+          { style: [styles.backdrop, backdropStyle] },
+          React.createElement(Pressable, {
+            style: styles.backdropPress,
+            onPress: () => animateOut(handleClose),
+          })
+        ),
+        React.createElement(
+          KeyboardAvoidingView,
+          {
+            behavior: Platform.OS === 'ios' ? 'padding' : undefined,
+            style: styles.keyboardView,
+            pointerEvents: 'box-none',
+          },
+          React.createElement(
+            GestureDetector,
+            { gesture: panGesture },
+            React.createElement(
+              Animated.View,
+              {
+                style: [
+                  styles.sheet,
+                  sheetStyle,
+                  { height: containerHeight || undefined },
+                ],
+              },
+              React.createElement(
+                View,
+                { style: styles.handleArea },
+                React.createElement(View, { style: styles.handle }),
+                React.createElement(
+                  View,
+                  { style: styles.header },
+                  React.createElement(
+                    TouchableOpacity,
+                    {
+                      onPress: () => animateOut(handleClose),
+                      style: styles.headerButton,
+                      hitSlop: 8,
+                    },
+                    React.createElement(Text, { style: styles.headerButtonText }, 'Cancel')
+                  ),
+                  React.createElement(Text, { style: styles.title }, title),
+                  React.createElement(
+                    TouchableOpacity,
+                    {
+                      onPress: () => animateOut(handleSave),
+                      style: styles.headerButton,
+                      hitSlop: 8,
+                    },
+                    React.createElement(
+                      Text,
+                      { style: [styles.headerButtonText, styles.headerButtonStrong] },
+                      'Save'
+                    )
+                  )
+                )
+              )
+            ),
+            React.createElement(
+              SheetContext.Provider,
+              { value: { scrollViewRef, scrollOffset } },
+              children
+            )
+          )
+        )
+      )
+    )
   );
 }
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
