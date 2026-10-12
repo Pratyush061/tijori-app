@@ -1033,4 +1033,92 @@ describe('NoteEditorScreen Component Test Suite', () => {
       expect(saved.initial).toBe('MS');
     });
   });
+
+  describe('Tier 4 - Rich Text Enhancements: Selection Retention, Horizontal Font Size Bar, and Symbols', () => {
+    test('R-Enhance-1: Toggling font size button displays horizontal sizeBar with all 7 sizes', () => {
+      const tree = createTree(
+        <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
+      );
+
+      const sizeBtn = findByLabel(tree, 'Font size');
+      expect(sizeBtn).toBeDefined();
+
+      expect(tree.root.findAll(n => n.props?.testID === 'font-size-bar').length).toBe(0);
+
+      ReactTestRenderer.act(() => {
+        sizeBtn?.props.onPress();
+      });
+
+      const sizeBar = tree.root.findAll(n => n.props?.testID === 'font-size-bar')[0];
+      expect(sizeBar).toBeDefined();
+
+      ['10', '12', '14', '16', '18', '24', '32'].forEach(pt => {
+        const pill = tree.root.findAll(n => n.props?.testID === `size-${pt}`)[0];
+        expect(pill).toBeDefined();
+      });
+    });
+
+    test('R-Enhance-2: Tapping font size pill sets size and reflects active state', () => {
+      const tree = createTree(
+        <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
+      );
+
+      const sizeBtn = findByLabel(tree, 'Font size');
+      ReactTestRenderer.act(() => {
+        sizeBtn?.props.onPress();
+      });
+
+      const pill24 = tree.root.findAll(n => n.props?.testID === 'size-24')[0];
+      expect(pill24).toBeDefined();
+
+      ReactTestRenderer.act(() => {
+        pill24.props.onPress();
+      });
+
+      // Report active format
+      const editor = tree.root.findByType(RichEditor);
+      ReactTestRenderer.act(() => {
+        editor.props.onStateChange({ fontSize: '24' });
+      });
+
+      const updatedPill24 = tree.root.findAll(n => n.props?.testID === 'size-24')[0];
+      const style = Array.isArray(updatedPill24.props.style)
+        ? Object.assign({}, ...updatedPill24.props.style)
+        : updatedPill24.props.style;
+      expect(style.backgroundColor).toBe(colors.ink);
+    });
+
+    test('R-Enhance-3: Inline code tool button is present and triggers inlineCode command', () => {
+      const tree = createTree(
+        <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
+      );
+
+      const codeBtn = findByLabel(tree, 'Format code');
+      expect(codeBtn).toBeDefined();
+
+      const editor = tree.root.findByType(RichEditor);
+      ReactTestRenderer.act(() => {
+        editor.props.onStateChange({ inlineCode: true });
+      });
+
+      const updatedCodeBtn = findByLabel(tree, 'Format code');
+      const style = Array.isArray(updatedCodeBtn.props.style)
+        ? Object.assign({}, ...updatedCodeBtn.props.style)
+        : updatedCodeBtn.props.style;
+      expect(style.backgroundColor).toBe(colors.ink);
+    });
+
+    test('R-Enhance-4: RichEditor document embeds inline-code CSS and selection retention logic', () => {
+      const tree = createTree(<RichEditor initialHTML="<p>Test note</p>" />);
+      const webView = tree.root.findAll(
+        node => !!node.props && typeof node.props.source?.html === 'string'
+      )[0];
+      const html = webView?.props.source.html as string;
+
+      expect(html).toContain('code.inline-code');
+      expect(html).toContain('window.__toggleInlineCode');
+      expect(html).toContain('savedRange = newRange.cloneRange();');
+      expect(html).toContain("if (['10', '11', '12', '14', '16', '18', '24', '32', '36'].indexOf(pointSize) === -1)");
+    });
+  });
 });

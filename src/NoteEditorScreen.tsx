@@ -33,7 +33,7 @@ type Props = {
 const PALETTE = ['#111111', '#FF6B00', '#0A84FF', '#34C759', '#FF2D55', '#AF52DE'];
 
 // Word-like point sizes offered by the font-size menu.
-const FONT_SIZES_PT = ['10', '11', '12', '14', '16', '18', '24', '36'];
+const FONT_SIZES_PT = ['10', '12', '14', '16', '18', '24', '32'];
 
 // Notes created before the rich-text editor are plain text. Turn their line
 // breaks into <br> so they open looking the way they were written.
@@ -344,6 +344,46 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
         />
       </View>
 
+      {/* Font Size Pill Bar */}
+      {showSizes && (
+        <View
+          style={[styles.sizeBar, { backgroundColor: currentBg }]}
+          accessibilityLabel="Font size list"
+          testID="font-size-bar"
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sizeBarContent}
+            keyboardShouldPersistTaps="always"
+            testID="font-size-menu"
+          >
+            {FONT_SIZES_PT.map(pt => {
+              const isSelected = activeFormats.fontSize === pt;
+              return (
+                <TouchableOpacity
+                  key={pt}
+                  onPress={() => setFontSize(pt)}
+                  style={[styles.sizePill, isSelected && styles.sizePillActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Font size ${pt}`}
+                  testID={`size-${pt}`}
+                >
+                  <Text
+                    style={[
+                      styles.sizePillText,
+                      isSelected && styles.sizePillTextActive,
+                    ]}
+                  >
+                    {pt}pt
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* ForeColor Palette Row */}
       {showColors && (
         <View style={[styles.colorRow, { backgroundColor: currentBg }]}>
@@ -430,6 +470,12 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
             isActive={activeFormats.formatBlock === 'pre'}
             onPress={() => setBlock('pre')}
           />
+          <ToolButton
+            label="code"
+            isActive={!!activeFormats.inlineCode}
+            testID="format-code"
+            onPress={() => run('inlineCode')}
+          />
           <Divider />
           <ToolButton
             label={`${activeFormats.fontSize || '13'}pt`}
@@ -445,35 +491,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
         </ScrollView>
       </View>
-
-      {showSizes && (
-        <View style={styles.sizeMenu} accessibilityLabel="Font size list" testID="font-size-menu">
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {FONT_SIZES_PT.map(pt => (
-              <TouchableOpacity
-                key={pt}
-                onPress={() => {
-                  setFontSize(pt);
-                  setShowSizes(false);
-                }}
-                style={styles.sizeRow}
-                accessibilityRole="button"
-                accessibilityLabel={`Font size ${pt}`}
-                testID={`size-${pt}`}
-              >
-                <Text
-                  style={[
-                    styles.sizeRowText,
-                    activeFormats.fontSize === pt ? styles.sizeRowTextActive : null,
-                  ]}
-                >
-                  {pt}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
     </KeyboardAvoidingView>
   );
 }
@@ -652,29 +669,39 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
   },
-  sizeMenu: {
-    position: 'absolute',
-    right: 16,
-    bottom: 60,
-    width: 92,
-    maxHeight: 260,
-    borderRadius: 12,
-    paddingVertical: 4,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
+  sizeBar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.sep,
+    paddingVertical: space.xs,
+  },
+  sizeBarContent: {
+    alignItems: 'center',
+    paddingHorizontal: space.md,
+    gap: space.xs,
+  },
+  sizePill: {
+    minWidth: 46,
+    height: 32,
+    paddingHorizontal: space.sm,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
     borderColor: colors.sep,
   },
-  sizeRow: {
-    paddingVertical: 9,
-    alignItems: 'center',
+  sizePillActive: {
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
-  sizeRowText: {
-    fontSize: 16,
+  sizePillText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.ink,
   },
-  sizeRowTextActive: {
+  sizePillTextActive: {
+    color: '#FFFFFF',
     fontWeight: '700',
-    color: colors.blue,
   },
   toolbar: {
     borderTopWidth: StyleSheet.hairlineWidth,

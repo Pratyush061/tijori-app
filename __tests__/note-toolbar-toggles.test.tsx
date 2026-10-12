@@ -131,20 +131,45 @@ describe('Notes toolbar toggles', () => {
     });
   });
 
-  it('opens the point-size menu from the size button and applies a size', () => {
+  it('opens the point-size pill bar from the size button and applies a size', () => {
     const tree = mount();
 
-    expect(findByTestID(tree, 'font-size-menu')).toBeUndefined();
+    expect(findByTestID(tree, 'font-size-bar')).toBeUndefined();
 
     tap(tree, 'Font size');
-    expect(findByTestID(tree, 'font-size-menu')).toBeDefined();
-    ['10', '11', '12', '14', '16', '18', '24', '36'].forEach(pt => {
+    expect(findByTestID(tree, 'font-size-bar')).toBeDefined();
+    ['10', '12', '14', '16', '18', '24', '32'].forEach(pt => {
       expect(findByTestID(tree, `size-${pt}`)).toBeDefined();
     });
     expect(findByTestID(tree, 'size-13')).toBeUndefined();
 
-    tap(tree, 'Font size 16');
-    expect(findByTestID(tree, 'font-size-menu')).toBeUndefined();
+    tap(tree, 'Font size');
+    expect(findByTestID(tree, 'font-size-bar')).toBeUndefined();
+  });
+
+  it('highlights the active font size pill in the horizontal bar', () => {
+    const tree = mount();
+
+    tap(tree, 'Font size');
+    report(tree, { fontSize: '18' });
+
+    const pill18 = findByTestID(tree, 'size-18');
+    expect(backgroundOf(pill18)).toBe(colors.ink);
+
+    const pill14 = findByTestID(tree, 'size-14');
+    expect(backgroundOf(pill14)).not.toBe(colors.ink);
+  });
+
+  it('lights inline code button when inlineCode is reported by editor', () => {
+    const tree = mount();
+
+    expect(backgroundOf(findByLabel(tree, 'Format code'))).not.toBe(colors.ink);
+
+    report(tree, { inlineCode: true });
+    expect(backgroundOf(findByLabel(tree, 'Format code'))).toBe(colors.ink);
+
+    report(tree, { inlineCode: false });
+    expect(backgroundOf(findByLabel(tree, 'Format code'))).not.toBe(colors.ink);
   });
 
   it('shows the reported current point size on the size button', () => {
