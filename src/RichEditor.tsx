@@ -24,6 +24,7 @@ export type RichEditorHandle = {
   setBlock: (tag: string) => void;
   setFontSize: (pt: string) => void;
   toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => void;
+  toggleInlineCode: () => void;
   focus: () => void;
   focusEnd: () => void;
   focusToEnd: () => void;
@@ -39,6 +40,7 @@ export type EditorState = {
   insertOrderedList?: boolean;
   formatBlock?: string | null;
   fontSize?: string | null;
+  inlineCode?: boolean;
 };
 
 export type FormatStates = {
@@ -122,6 +124,13 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     overflow-wrap: break-word;
   }
   code { font-family: "SF Mono", Menlo, Consolas, monospace; }
+  code.inline-code, code:not(pre code) {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
   ul, ol { padding-left: 24px; margin: 8px 0; }
   a { color: ${accent}; }
 </style>
@@ -288,9 +297,28 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     // The browser reports the default block as 'div' (or nothing); both mean a
     // plain paragraph.
     function currentBlock() {
+      var nodes = selectionNodes();
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i].nodeName.toLowerCase();
+        if (n === 'blockquote' || n === 'pre' || HEADINGS.indexOf(n) !== -1) {
+          return n;
+        }
+      }
       var block = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
       if (!block || block === 'div') return 'p';
       return block;
+    }
+
+    function isInlineCode() {
+      var nodes = selectionNodes();
+      var hasCode = false;
+      var hasPre = false;
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i].nodeName.toLowerCase();
+        if (n === 'code') hasCode = true;
+        if (n === 'pre') hasPre = true;
+      }
+      return hasCode && !hasPre;
     }
 
     // Effective rendered size converted to points (CSS uses 96px per inch), so
@@ -320,7 +348,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
           insertUnorderedList: document.queryCommandState('insertUnorderedList') === true,
           insertOrderedList: document.queryCommandState('insertOrderedList') === true,
           formatBlock: currentBlock(),
-          fontSize: currentFontSize()
+          fontSize: currentFontSize(),
+          inlineCode: isInlineCode()
         };
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'state', state: state }));
       }
@@ -348,7 +377,13 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       if (sel && sel.rangeCount > 0) {
         var range = sel.getRangeAt(0);
         if (editor.contains(range.commonAncestorContainer)) {
-          savedRange = range.cloneRange();
+          if (!range.collapsed) {
+            savedRange = range.cloneRange();
+          } else {
+            if (document.activeElement === editor || !savedRange) {
+              savedRange = range.cloneRange();
+            }
+          }
         }
       }
     }
@@ -435,12 +470,20 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     }
 
     // Put the caret back where it was, apply the change, then report the truth.
+    var wasSelectedBeforeCommand = false;
     function begin() {
       editor.focus();
+      wasSelectedBeforeCommand = !!(savedRange && !savedRange.collapsed);
       restoreSelection();
       document.execCommand('styleWithCSS', false, false);
     }
     function finish() {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+      } else if (wasSelectedBeforeCommand && savedRange) {
+        restoreSelection();
+      }
       rememberSelection();
       push();
       sendState();
@@ -482,8 +525,24 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     window.__setBlock = function (id, tag) {
       if (alreadyRan(id)) return;
       begin();
-      var next = currentBlock() === tag ? 'p' : tag;
-      document.execCommand('formatBlock', false, '<' + next + '>');
+      var cur = currentBlock();
+      var next = cur === tag ? 'p' : tag;
+      if (next === 'p' && (cur === 'blockquote' || cur === 'pre')) {
+        var nodes = selectionNodes();
+        var blockNode = null;
+        for (var i = 0; i < nodes.length; i++) {
+          var name = nodes[i].nodeName.toLowerCase();
+          if (name === cur) { blockNode = nodes[i]; break; }
+        }
+        document.execCommand('formatBlock', false, '<p>');
+        if (blockNode && blockNode.parentNode && blockNode.nodeName.toLowerCase() === cur) {
+          var p = document.createElement('p');
+          while (blockNode.firstChild) p.appendChild(blockNode.firstChild);
+          blockNode.parentNode.replaceChild(p, blockNode);
+        }
+      } else {
+        document.execCommand('formatBlock', false, '<' + next + '>');
+      }
       finish();
     };
 
@@ -500,6 +559,7 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       span.style.fontSize = pt + 'pt';
       while (font.firstChild) span.appendChild(font.firstChild);
       if (font.parentNode) font.parentNode.replaceChild(span, font);
+      return span;
     }
 
     // Converts the marker tags that appeared since the last snapshot. It runs
@@ -507,13 +567,13 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     // after choosing a size keep that size instead of being left behind as a
     // stray legacy size-7 tag, which renders at the browser's huge default.
     function convertNewSizeMarkers(pt) {
-      if (!pt) return 0;
+      if (!pt) return [];
       var marked = sizeSevenFonts();
-      var converted = 0;
+      var converted = [];
       for (var i = 0; i < marked.length; i++) {
         if (markerSnapshot.indexOf(marked[i]) !== -1) continue;
-        replaceFontWithPointSize(marked[i], pt);
-        converted++;
+        var newSpan = replaceFontWithPointSize(marked[i], pt);
+        converted.push(newSpan);
       }
       markerSnapshot = sizeSevenFonts();
       return converted;
@@ -549,7 +609,7 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     window.__setFontSize = function (id, pt) {
       if (alreadyRan(id)) return;
       var pointSize = String(parseInt(pt, 10));
-      if (['10', '11', '12', '14', '16', '18', '24', '36'].indexOf(pointSize) === -1) return;
+      if (['10', '11', '12', '14', '16', '18', '24', '32', '36'].indexOf(pointSize) === -1) return;
 
       begin();
       var sel = window.getSelection();
@@ -561,7 +621,64 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
         insertSizeSpanAtCaret(pointSize);
       } else {
         document.execCommand('fontSize', false, '7');
-        convertNewSizeMarkers(pointSize);
+        var newSpans = convertNewSizeMarkers(pointSize);
+        if (newSpans && newSpans.length > 0) {
+          try {
+            var newRange = document.createRange();
+            newRange.setStartBefore(newSpans[0]);
+            newRange.setEndAfter(newSpans[newSpans.length - 1]);
+            var s = window.getSelection();
+            if (s) {
+              s.removeAllRanges();
+              s.addRange(newRange);
+            }
+            savedRange = newRange.cloneRange();
+          } catch (e) {}
+        }
+      }
+      finish();
+    };
+
+    window.__toggleInlineCode = function (id) {
+      if (alreadyRan(id)) return;
+      begin();
+      var sel = window.getSelection();
+      var nodes = selectionNodes();
+      var codeNode = null;
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].nodeName.toLowerCase() === 'code' &&
+            (!nodes[i].parentNode || nodes[i].parentNode.nodeName.toLowerCase() !== 'pre')) {
+          codeNode = nodes[i];
+          break;
+        }
+      }
+
+      if (codeNode) {
+        var parent = codeNode.parentNode;
+        if (parent) {
+          while (codeNode.firstChild) {
+            parent.insertBefore(codeNode.firstChild, codeNode);
+          }
+          parent.removeChild(codeNode);
+        }
+      } else {
+        if (sel && sel.rangeCount > 0) {
+          var range = sel.getRangeAt(0);
+          if (!range.collapsed) {
+            var code = document.createElement('code');
+            code.className = 'inline-code';
+            try {
+              var frag = range.extractContents();
+              code.appendChild(frag);
+              range.insertNode(code);
+              var newRange = document.createRange();
+              newRange.selectNodeContents(code);
+              sel.removeAllRanges();
+              sel.addRange(newRange);
+              savedRange = newRange.cloneRange();
+            } catch (e) {}
+          }
+        }
       }
       finish();
     };
@@ -611,6 +728,7 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
       if (!html) return '';
       return html
         .replace(/<([b|i|u|s]|strike)>\s*<\/\1>/gi, '')
+        .replace(/<code[^>]*>\s*<\/code>/gi, '')
         .replace(/<span\s*[^>]*>\s*<\/span>/gi, '');
     };
 
@@ -620,6 +738,12 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
       exec: (command: string, value?: string) => {
         if (command === 'focusEnd' || command === 'focusToEnd') {
           webRef.current?.injectJavaScript('window.__focusEnd(); true;');
+          return;
+        }
+        if (command === 'inlineCode') {
+          webRef.current?.injectJavaScript(
+            `window.__toggleInlineCode(${JSON.stringify(nextCommandId())}); true;`
+          );
           return;
         }
         const payload = `window.__exec(${JSON.stringify(nextCommandId())}, ${JSON.stringify(
@@ -642,6 +766,11 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
           format
         )}); true;`;
         webRef.current?.injectJavaScript(payload);
+      },
+      toggleInlineCode: () => {
+        webRef.current?.injectJavaScript(
+          `window.__toggleInlineCode(${JSON.stringify(nextCommandId())}); true;`
+        );
       },
       focus: () => {
         webRef.current?.injectJavaScript(
