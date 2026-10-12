@@ -35,7 +35,7 @@ function findByLabel(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
 async function tapByLabel(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
   const node = findByLabel(tree, label);
   if (!node) {
-    throw new Error(`Element with accessibilityLabel="${label}" not found`);
+    throw new Error(`Element with accessibilityLabel=\"${label}\" not found`);
   }
   await ReactTestRenderer.act(async () => {
     node.props.onPress();
@@ -59,7 +59,7 @@ function findByButtonText(tree: ReactTestRenderer.ReactTestRenderer, text: strin
 async function tapByButtonText(tree: ReactTestRenderer.ReactTestRenderer, text: string) {
   const node = findByButtonText(tree, text);
   if (!node) {
-    throw new Error(`Element with button text "${text}" not found`);
+    throw new Error(`Element with button text \"${text}\" not found`);
   }
   await ReactTestRenderer.act(async () => {
     node.props.onPress();
@@ -79,16 +79,16 @@ async function unlockVault(tree: ReactTestRenderer.ReactTestRenderer) {
 
   const json = JSON.stringify(tree.toJSON());
   if (json.includes('Create a passcode') || json.includes('STEP 1 OF 2')) {
-    for (const digit of ['1', '2', '3', '4']) {
+    for (const digit of ['1', '2', '3', '4', '5', '6']) {
       await tapByLabel(tree, digit);
     }
     await tapByLabel(tree, '✓');
-    for (const digit of ['1', '2', '3', '4']) {
+    for (const digit of ['1', '2', '3', '4', '5', '6']) {
       await tapByLabel(tree, digit);
     }
     await tapByLabel(tree, '✓');
   } else if (json.includes('Enter your passcode') || json.includes('Enter Passcode') || json.includes('Unlock')) {
-    for (const digit of ['1', '2', '3', '4']) {
+    for (const digit of ['1', '2', '3', '4', '5', '6']) {
       await tapByLabel(tree, digit);
     }
     await tapByLabel(tree, '✓');
@@ -99,9 +99,9 @@ async function seedNote(data: any) {
   if (!isUnlocked()) {
     const isInit = await AsyncStorage.getItem('@tijori:verifier');
     if (!isInit) {
-      await initializeVault('1234');
+      await initializeVault('123456');
     } else {
-      await unlockVaultDirect('1234');
+      await unlockVaultDirect('123456');
     }
   }
   return await noteStorage.create(data);
@@ -124,7 +124,7 @@ describe('Notes Revamp Opaque-Box E2E Suite (Tier 4)', () => {
     // 1. Navigate to Notes tab
     await tapByLabel(tree, 'Notes');
 
-    // 2. Open note editor via "Add Note" button
+    // 2. Open note editor via \"Add Note\" button
     const addBtn = findByButtonText(tree, 'Add Note') ?? findByLabel(tree, 'Add');
     expect(addBtn).not.toBeNull();
     await ReactTestRenderer.act(async () => {
@@ -279,7 +279,7 @@ describe('Notes Revamp Opaque-Box E2E Suite (Tier 4)', () => {
     expect(json).toContain('Grocery List');
     expect(json).toContain('Meeting Notes');
 
-    // Filter by "Grocery"
+    // Filter by \"Grocery\"
     const searchInput = tree.root.findByProps({ placeholder: 'Search notes' });
     await ReactTestRenderer.act(async () => {
       searchInput.props.onChangeText('Grocery');
@@ -301,7 +301,7 @@ describe('Notes Revamp Opaque-Box E2E Suite (Tier 4)', () => {
   test('E2E-5: Legacy note backward compatibility - plain text note without tint opens and saves', async () => {
     await seedNote({
       title: 'Legacy Note',
-      body: 'Line 1\nLine 2\nLine 3',
+      body: 'Line 1\\nLine 2\\nLine 3',
       color: colors.orange,
       initial: 'LN',
     });
@@ -348,7 +348,7 @@ describe('Notes Revamp Opaque-Box E2E Suite (Tier 4)', () => {
     await expect(noteStorage.list()).rejects.toThrow('Vault is locked');
 
     // Unlock again and verify notes survived
-    const unlocked = await unlockVaultDirect('1234');
+    const unlocked = await unlockVaultDirect('123456');
     expect(unlocked).toBe(true);
     const storedNotes = await noteStorage.list();
     expect(storedNotes.length).toBe(1);
