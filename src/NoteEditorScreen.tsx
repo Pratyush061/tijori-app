@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -65,7 +65,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const [showPalette, setShowPalette] = useState(false);
   const [showColors, setShowColors] = useState(false);
   const [activeFormats, setActiveFormats] = useState<EditorState>({});
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const editorRef = useRef<RichEditorHandle>(null);
   const titleInputRef = useRef<TextInput>(null);
@@ -85,32 +84,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   useEffect(() => {
     latestTintRef.current = tint;
   }, [tint]);
-
-  // Keyboard height listener for floating toolbar
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const s1 = Keyboard.addListener(showEvent, e => {
-      setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : 0);
-    });
-    const s2 = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    const s3 = Keyboard.addListener('keyboardDidShow', e => {
-      setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : 0);
-    });
-    const s4 = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      s1.remove();
-      s2.remove();
-      s3.remove();
-      s4.remove();
-    };
-  }, []);
 
   const isSavingRef = useRef(false);
 
@@ -230,7 +203,10 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const currentBg = NOTE_TINTS[tint] || NOTE_TINTS.default;
 
   return (
-    <View style={[styles.container, { backgroundColor: currentBg }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: currentBg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Clean Single-Row Header */}
       <View style={[styles.header, { backgroundColor: currentBg }]}>
         <TouchableOpacity
@@ -378,7 +354,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
 
       {/* Keyboard-Adaptive Floating Toolbar */}
       <View
-        style={[styles.toolbar, { bottom: keyboardHeight }]}
+        style={styles.toolbar}
         accessibilityLabel="Formatting Toolbar"
         testID="formatting-toolbar"
       >
@@ -471,7 +447,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -650,7 +626,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   toolbar: {
-    position: 'relative',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.sep,
     backgroundColor: colors.bg,
