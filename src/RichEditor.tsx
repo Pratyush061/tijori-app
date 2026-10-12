@@ -135,9 +135,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     // New paragraphs become <p>, so formatBlock reads back a real block name.
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
     var savedRange = null;
-    var pendingPt = null;
-    var pendingSizeCaret = null;
-    var pendingSizeExistingFonts = [];
+    var lastPt = null;
+    var markerSnapshot = [];
     var pendingBoldHeading = null;
     var pendingBoldCaret = null;
 
@@ -147,6 +146,9 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       var emptyTags = editor.querySelectorAll('b:empty, i:empty, u:empty, s:empty, strike:empty, span:empty');
       for (var i = 0; i < emptyTags.length; i++) {
         var el = emptyTags[i];
+        // A span carrying an explicit style is not an orphan: it is a font size
+        // (or similar) waiting for the next typed word. Never strip it.
+        if (el.getAttribute && el.getAttribute('style')) continue;
         if (activeNode && (el === activeNode || el.contains(activeNode))) continue;
         if (el.parentNode) el.parentNode.removeChild(el);
       }
@@ -291,19 +293,9 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       return block;
     }
 
-    // Effective rendered size converted to points (CSS uses 96px per inch).
-    // A size chosen at a collapsed caret is shown immediately until the caret
-    // moves or the first typed input is converted to a real point-sized span.
+    // Effective rendered size converted to points (CSS uses 96px per inch), so
+    // the 17px body text reads back as 13pt.
     function currentFontSize() {
-      var sel = window.getSelection();
-      if (pendingPt !== null && pendingSizeCaret && sel && sel.rangeCount > 0 && sel.isCollapsed) {
-        var currentRange = sel.getRangeAt(0);
-        if (currentRange.startContainer === pendingSizeCaret.node &&
-            currentRange.startOffset === pendingSizeCaret.offset) {
-          return String(pendingPt);
-        }
-      }
-
       var nodes = selectionNodes();
       var el = nodes.length ? nodes[0] : editor;
       var px = 0;
@@ -428,16 +420,6 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
           currentHeading() === pendingBoldHeading && hasAny(nodeNames(), ['b', 'strong']);
         if (!sameBoldCaret && !inAppliedBoldTag) clearPendingHeadingBold();
       }
-      if (pendingPt !== null && pendingSizeCaret) {
-        var sel = window.getSelection();
-        var range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
-        var stillAtPendingCaret = !!range && range.isCollapsed &&
-          range.startContainer === pendingSizeCaret.node &&
-          range.startOffset === pendingSizeCaret.offset;
-        if (!stillAtPendingCaret && !(range && isCaretInsideNewSizeMarker(range))) {
-          clearPendingFontSize();
-        }
-      }
       rememberSelection();
       sendState();
       ensureCursorVisible();
@@ -505,9 +487,10 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       finish();
     };
 
-    // execCommand only supports legacy sizes 1-7. Use size 7 as a temporary
-    // marker, but convert only marker nodes created by THIS command. Old notes
-    // may already contain <font size="7"> and must never be rewritten globally.
+    // execCommand's font size only speaks the legacy 1-7 scale, so size 7 is
+    // used as a temporary marker and the tags it produces are immediately
+    // rewritten as a real point size. Only markers we created are touched: an
+    // old note may already contain <font size="7"> and must not be rewritten.
     function sizeSevenFonts() {
       return Array.prototype.slice.call(editor.querySelectorAll('font[size="7"]'));
     }
@@ -519,42 +502,48 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       if (font.parentNode) font.parentNode.replaceChild(span, font);
     }
 
-    function convertNewSizeMarkers(pt, previouslyPresent) {
+    // Converts the marker tags that appeared since the last snapshot. It runs
+    // straight after a size is applied AND again on every input, so words typed
+    // after choosing a size keep that size instead of being left behind as a
+    // stray legacy size-7 tag, which renders at the browser's huge default.
+    function convertNewSizeMarkers(pt) {
+      if (!pt) return 0;
       var marked = sizeSevenFonts();
       var converted = 0;
       for (var i = 0; i < marked.length; i++) {
-        if (previouslyPresent.indexOf(marked[i]) !== -1) continue;
+        if (markerSnapshot.indexOf(marked[i]) !== -1) continue;
         replaceFontWithPointSize(marked[i], pt);
         converted++;
       }
+      markerSnapshot = sizeSevenFonts();
       return converted;
     }
 
-    function clearPendingFontSize() {
-      pendingPt = null;
-      pendingSizeCaret = null;
-      pendingSizeExistingFonts = [];
-    }
-
-    function isCaretInsideNewSizeMarker(range) {
-      var node = range.startContainer;
-      if (node.nodeType === 3) node = node.parentNode;
-      while (node && node !== editor) {
-        if (node.nodeName.toLowerCase() === 'font' && node.getAttribute('size') === '7') {
-          return pendingSizeExistingFonts.indexOf(node) === -1;
-        }
-        node = node.parentNode;
+    // A collapsed caret gets an empty sized span instead. execCommand's font
+    // size does not reliably create a tag when nothing is selected, and the
+    // documented fix is to insert the span and drop the caret inside it, so the
+    // next words typed come out at that size.
+    function insertSizeSpanAtCaret(pt) {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return false;
+      var range = sel.getRangeAt(0);
+      var span = document.createElement('span');
+      span.style.fontSize = pt + 'pt';
+      try {
+        range.insertNode(span);
+      } catch (e) {
+        return false;
       }
-      return false;
+      var caret = document.createRange();
+      caret.setStart(span, 0);
+      caret.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(caret);
+      return true;
     }
 
     function applyPendingSize() {
-      if (pendingPt === null) return;
-      if (convertNewSizeMarkers(pendingPt, pendingSizeExistingFonts) > 0) {
-        // The inserted text now carries a real CSS point size, so there is no
-        // stale global pending size left to rewrite later inputs or old notes.
-        clearPendingFontSize();
-      }
+      convertNewSizeMarkers(lastPt);
     }
 
     window.__setFontSize = function (id, pt) {
@@ -563,28 +552,16 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       if (['10', '11', '12', '14', '16', '18', '24', '36'].indexOf(pointSize) === -1) return;
 
       begin();
-      clearPendingFontSize();
       var sel = window.getSelection();
       var collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
-      var previouslyPresent = sizeSevenFonts();
 
-      document.execCommand('fontSize', false, '7');
+      lastPt = pointSize;
+      markerSnapshot = sizeSevenFonts();
       if (collapsed) {
-        pendingPt = pointSize;
-        pendingSizeExistingFonts = previouslyPresent;
-        var pendingSelection = window.getSelection();
-        if (pendingSelection && pendingSelection.rangeCount > 0) {
-          var pendingRange = pendingSelection.getRangeAt(0);
-          pendingSizeCaret = {
-            node: pendingRange.startContainer,
-            offset: pendingRange.startOffset
-          };
-        }
-        // Usually the browser creates the marker only when the user starts
-        // typing. Handle it immediately too, in case the WebView creates one.
-        applyPendingSize();
+        insertSizeSpanAtCaret(pointSize);
       } else {
-        convertNewSizeMarkers(pointSize, previouslyPresent);
+        document.execCommand('fontSize', false, '7');
+        convertNewSizeMarkers(pointSize);
       }
       finish();
     };
