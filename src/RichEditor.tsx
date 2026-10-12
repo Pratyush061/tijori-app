@@ -138,6 +138,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     var pendingPt = null;
     var pendingSizeCaret = null;
     var pendingSizeExistingFonts = [];
+    var pendingBoldHeading = null;
+    var pendingBoldCaret = null;
 
     function cleanOrphanedTags() {
       var sel = window.getSelection();
@@ -196,6 +198,63 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
 
     var HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 
+    function headingFromNode(node) {
+      if (node && node.nodeType === 3) node = node.parentNode;
+      while (node && node !== editor) {
+        if (HEADINGS.indexOf(node.nodeName.toLowerCase()) !== -1) return node;
+        node = node.parentNode;
+      }
+      return null;
+    }
+
+    function currentHeading() {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      var range = sel.getRangeAt(0);
+      var startHeading = headingFromNode(range.startContainer);
+      var endHeading = headingFromNode(range.endContainer);
+      return startHeading && startHeading === endHeading ? startHeading : null;
+    }
+
+    function pendingBoldForCurrentCaret(heading) {
+      var sel = window.getSelection();
+      if (!heading || pendingBoldHeading !== heading || !pendingBoldCaret ||
+          !sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+      var range = sel.getRangeAt(0);
+      return range.startContainer === pendingBoldCaret.node &&
+        range.startOffset === pendingBoldCaret.offset;
+    }
+
+    function clearPendingHeadingBold() {
+      pendingBoldHeading = null;
+      pendingBoldCaret = null;
+    }
+
+    // The browser counts h1/h2's default weight as "bold". Temporarily neutralize
+    // that block style while executing the command so Bold applies an explicit
+    // mark instead of turning the heading's visual boldness off.
+    function executeBoldInHeading(heading) {
+      var oldWeight = heading.style.getPropertyValue('font-weight');
+      var oldPriority = heading.style.getPropertyPriority('font-weight');
+      heading.style.setProperty('font-weight', 'normal', 'important');
+      document.execCommand('bold', false, null);
+      if (oldWeight) heading.style.setProperty('font-weight', oldWeight, oldPriority);
+      else heading.style.removeProperty('font-weight');
+    }
+
+    function clearResolvedPendingHeadingBold() {
+      if (!pendingBoldHeading) return;
+      var sel = window.getSelection();
+      var range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      if (!range || !range.isCollapsed || currentHeading() !== pendingBoldHeading) {
+        clearPendingHeadingBold();
+        return;
+      }
+      if (hasAny(nodeNames(), ['b', 'strong']) || !pendingBoldForCurrentCaret(pendingBoldHeading)) {
+        clearPendingHeadingBold();
+      }
+    }
+
     function isCollapsedCaret() {
       var sel = window.getSelection();
       return !!sel && sel.rangeCount > 0 && sel.isCollapsed &&
@@ -212,9 +271,10 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     function isBold() {
       var names = nodeNames();
       if (hasAny(names, ['b', 'strong'])) return true;
-      // Headings render bold without an explicit bold mark. Do not confuse
-      // that browser styling with a user's pending bold typing state.
-      if (hasAny(names, HEADINGS)) return false;
+      // The only "bold" state a heading may report without a real mark is a
+      // pending Bold command we explicitly issued at this caret.
+      var heading = currentHeading();
+      if (heading) return pendingBoldForCurrentCaret(heading);
       return pendingFormatState('bold');
     }
 
@@ -347,11 +407,27 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'blur' }));
       }
     });
-    editor.addEventListener('input', function() { applyPendingSize(); push(); sendState(); ensureCursorVisible(); });
+    editor.addEventListener('input', function() {
+      applyPendingSize();
+      clearResolvedPendingHeadingBold();
+      push();
+      sendState();
+      ensureCursorVisible();
+    });
     editor.addEventListener('keyup', function() { push(); sendState(); ensureCursorVisible(); });
     editor.addEventListener('click', sendState);
 
     document.addEventListener('selectionchange', function() {
+      if (pendingBoldHeading && pendingBoldCaret) {
+        var boldSel = window.getSelection();
+        var boldRange = boldSel && boldSel.rangeCount > 0 ? boldSel.getRangeAt(0) : null;
+        var sameBoldCaret = !!boldRange && boldRange.isCollapsed &&
+          boldRange.startContainer === pendingBoldCaret.node &&
+          boldRange.startOffset === pendingBoldCaret.offset;
+        var inAppliedBoldTag = !!boldRange && boldRange.isCollapsed &&
+          currentHeading() === pendingBoldHeading && hasAny(nodeNames(), ['b', 'strong']);
+        if (!sameBoldCaret && !inAppliedBoldTag) clearPendingHeadingBold();
+      }
       if (pendingPt !== null && pendingSizeCaret) {
         var sel = window.getSelection();
         var range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
@@ -392,7 +468,31 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     window.__exec = function (id, command, value) {
       if (alreadyRan(id)) return;
       begin();
-      document.execCommand(command, false, value === undefined ? null : value);
+      var heading = command === 'bold' ? currentHeading() : null;
+      var names = nodeNames();
+      var sel = window.getSelection();
+      var collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+
+      if (heading && !hasAny(names, ['b', 'strong'])) {
+        var wasPendingBold = collapsed && pendingBoldForCurrentCaret(heading);
+        executeBoldInHeading(heading);
+        if (collapsed && !wasPendingBold) {
+          pendingBoldHeading = heading;
+          var pendingSel = window.getSelection();
+          if (pendingSel && pendingSel.rangeCount > 0) {
+            var pendingRange = pendingSel.getRangeAt(0);
+            pendingBoldCaret = {
+              node: pendingRange.startContainer,
+              offset: pendingRange.startOffset
+            };
+          }
+        } else {
+          clearPendingHeadingBold();
+        }
+      } else {
+        if (command === 'bold') clearPendingHeadingBold();
+        document.execCommand(command, false, value === undefined ? null : value);
+      }
       finish();
     };
 
