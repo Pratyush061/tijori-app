@@ -151,11 +151,11 @@ describe('Notes toolbar toggles', () => {
     const tree = mount();
 
     const defaultSize = findByTestID(tree, 'font-size');
-    expect(defaultSize.findAll(node => node.props.children === '13pt')).toHaveLength(1);
+    expect(defaultSize?.findAll(node => node.props.children === '13pt')).toHaveLength(1);
 
     report(tree, { fontSize: '16' });
     const selectedSize = findByTestID(tree, 'font-size');
-    expect(selectedSize.findAll(node => node.props.children === '16pt')).toHaveLength(1);
+    expect(selectedSize?.findAll(node => node.props.children === '16pt')).toHaveLength(1);
   });
 
   it('only uses command state for collapsed-caret marks, not selected text', () => {
@@ -173,7 +173,7 @@ describe('Notes toolbar toggles', () => {
   });
 
   it('converts only newly-created size markers and clears stale pending sizes', () => {
-    const tree = createTree(<RichEditor initialHTML="<font size=\"7\">Old large text</font>" />);
+    const tree = createTree(<RichEditor initialHTML={'<font size="7">Old large text</font>'} />);
     const html = editorDocument(tree);
 
     expect(html).toContain('function convertNewSizeMarkers(pt, previouslyPresent)');
