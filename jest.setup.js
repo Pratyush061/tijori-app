@@ -166,12 +166,24 @@ jest.mock('react-native-gesture-handler', () => {
     Directions: {},
     GestureHandlerRootView: (props) => React.createElement(View, props, props.children),
     Gesture: {
-      Pan: jest.fn(() => ({
-        onStart: jest.fn().mockReturnThis(),
-        onChange: jest.fn().mockReturnThis(),
-        onEnd: jest.fn().mockReturnThis(),
-        onUpdate: jest.fn().mockReturnThis(),
-      }))
+      // The real API returns the gesture from every configuration call, so the
+      // mock must chain too - otherwise rendering a sheet throws on `.enabled`.
+      Pan: jest.fn(() => {
+        const builder = {};
+        [
+          'enabled',
+          'simultaneousWithExternalGesture',
+          'onStart',
+          'onChange',
+          'onEnd',
+          'onUpdate',
+          'onBegin',
+          'onFinalize',
+        ].forEach(name => {
+          builder[name] = jest.fn(() => builder);
+        });
+        return builder;
+      }),
     },
     GestureDetector: (props) => React.createElement(View, props, props.children),
   };
