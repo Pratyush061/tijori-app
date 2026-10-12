@@ -34,6 +34,13 @@ function findByTestID(tree: ReactTestRenderer.ReactTestRenderer, id: string) {
   return tree.root.findAll(node => !!node.props && node.props.testID === id)[0];
 }
 
+function editorDocument(tree: ReactTestRenderer.ReactTestRenderer): string {
+  const webView = tree.root.findAll(
+    node => !!node.props && typeof node.props.source?.html === 'string'
+  )[0];
+  return webView?.props.source.html as string;
+}
+
 function backgroundOf(node: ReturnType<typeof findByLabel>): unknown {
   if (!node) return undefined;
   const style = Array.isArray(node.props.style)
@@ -131,10 +138,50 @@ describe('Notes toolbar toggles', () => {
 
     tap(tree, 'Font size');
     expect(findByTestID(tree, 'font-size-menu')).toBeDefined();
-    expect(findByTestID(tree, 'size-16')).toBeDefined();
-    expect(findByTestID(tree, 'size-36')).toBeDefined();
+    ['10', '11', '12', '14', '16', '18', '24', '36'].forEach(pt => {
+      expect(findByTestID(tree, `size-${pt}`)).toBeDefined();
+    });
+    expect(findByTestID(tree, 'size-13')).toBeUndefined();
 
     tap(tree, 'Font size 16');
     expect(findByTestID(tree, 'font-size-menu')).toBeUndefined();
+  });
+
+  it('shows the reported current point size on the size button', () => {
+    const tree = mount();
+
+    const defaultSize = findByTestID(tree, 'font-size');
+    expect(defaultSize.findAll(node => node.props.children === '13pt')).toHaveLength(1);
+
+    report(tree, { fontSize: '16' });
+    const selectedSize = findByTestID(tree, 'font-size');
+    expect(selectedSize.findAll(node => node.props.children === '16pt')).toHaveLength(1);
+  });
+
+  it('only uses command state for collapsed-caret marks, not selected text', () => {
+    const tree = createTree(<RichEditor initialHTML="<h2>Heading</h2><p>Text</p>" />);
+    const html = editorDocument(tree);
+
+    expect(html).toContain('function isCollapsedCaret()');
+    expect(html).toContain('function pendingFormatState(command)');
+    expect(html).toContain("return pendingFormatState('bold');");
+    expect(html).toContain('return pendingFormatState(command);');
+    expect(html).toContain("if (hasAny(names, ['b', 'strong'])) return true;");
+    expect(html).toContain('if (hasAny(names, HEADINGS)) return false;');
+    expect(html).not.toContain("return document.queryCommandState('bold') === true;");
+    expect(html).not.toContain('return document.queryCommandState(command) === true;');
+  });
+
+  it('converts only newly-created size markers and clears stale pending sizes', () => {
+    const tree = createTree(<RichEditor initialHTML="<font size=\"7\">Old large text</font>" />);
+    const html = editorDocument(tree);
+
+    expect(html).toContain('function convertNewSizeMarkers(pt, previouslyPresent)');
+    expect(html).toContain('if (previouslyPresent.indexOf(marked[i]) !== -1) continue;');
+    expect(html).toContain('function clearPendingFontSize()');
+    expect(html).toContain('if (convertNewSizeMarkers(pendingPt, pendingSizeExistingFonts) > 0)');
+    expect(html).not.toContain(
+      'var marked = editor.querySelectorAll(\'font[size="7"]\');\n      for (var i = 0; i < marked.length; i++)'
+    );
   });
 });
