@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { Chevron, Icon, InsetGroup, ListRow } from './components';
+import { documentBadge, formatFileSize, isImageDocument } from './data';
 import type { DocumentEntry } from './data';
 import RNFS from 'react-native-fs';
 
@@ -124,8 +125,12 @@ export function DocumentsScreen({ onBack }: Props) {
                     key={d.id}
                     divider={i > 0}
                     leading={
-                      d.photoPath ? (
+                      d.photoPath && isImageDocument(d) ? (
                         <Image source={{ uri: d.photoPath }} style={styles.thumbnail} />
+                      ) : d.photoPath ? (
+                        <View style={[styles.thumbnailPlaceholder, { backgroundColor: d.color }]}>
+                          <Text style={styles.fileBadgeText}>{documentBadge(d)}</Text>
+                        </View>
                       ) : (
                         <View style={[styles.thumbnailPlaceholder, { backgroundColor: d.color }]}>
                           <Icon name="document" size={24} color="#FFF" />
@@ -133,7 +138,7 @@ export function DocumentsScreen({ onBack }: Props) {
                       )
                     }
                     title={d.title}
-                    subtitle={d.type}
+                    subtitle={[d.type, formatFileSize(d.sizeBytes)].filter(Boolean).join(' · ')}
                     onPress={() => {
                       setSelectedEntry(d);
                       setSheetVisible(true);
@@ -241,6 +246,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fileBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   listContainer: {
     marginTop: space.lg,
