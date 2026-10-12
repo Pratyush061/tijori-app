@@ -25,12 +25,7 @@ describe('DraggableSheet structure', () => {
     let tree!: ReactTestRenderer.ReactTestRenderer;
     ReactTestRenderer.act(() => {
       tree = ReactTestRenderer.create(
-        <DraggableSheet
-          visible
-          onClose={jest.fn()}
-          onSave={jest.fn()}
-          title="Test Sheet"
-        >
+        <DraggableSheet visible onClose={jest.fn()} onSave={jest.fn()} title="Test Sheet">
           <Text testID="sheet-body">Body content</Text>
         </DraggableSheet>
       );
@@ -40,8 +35,8 @@ describe('DraggableSheet structure', () => {
       const style = flattenStyle(node.props?.style);
       return style.borderTopLeftRadius === 24 && style.borderTopRightRadius === 24;
     })[0];
+    if (!sheet) throw new Error('The sheet surface was not rendered.');
 
-    expect(sheet).toBeDefined();
     expect(sheet.findAll(node => node.props?.testID === 'sheet-body')).toHaveLength(1);
   });
 });
