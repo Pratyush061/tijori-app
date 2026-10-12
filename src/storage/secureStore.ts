@@ -12,6 +12,8 @@ import {
   type VaultKey,
 } from './crypto';
 
+import { DEV_UNLOCK } from '../devFlags';
+
 /**
  * The encrypted wrapper the rest of the app reads and writes through.
  *
@@ -23,6 +25,44 @@ import {
 
 const VERIFIER_KEY = '@tijori_verifier';
 const VERIFIER_PLAIN = 'tijori-vault-v1';
+
+/**
+ * Debug-only convenience: the key remembered from a previous unlock, so a
+ * dev-unlock build can skip the passcode. Written only while DEV_UNLOCK is on,
+ * which is never the case in a normal release build.
+ */
+const DEV_UNLOCK_KEY = '@tijori_dev_unlock';
+
+async function rememberDevKey(key: VaultKey): Promise<void> {
+  if (!DEV_UNLOCK) return;
+  try {
+    await AsyncStorage.setItem(DEV_UNLOCK_KEY, key.toString(CryptoJS.enc.Base64));
+  } catch {
+    // Best effort — failing here just means the passcode is needed next time.
+  }
+}
+
+/**
+ * Opens the vault from the remembered key, with no passcode and no key
+ * derivation. Returns false when the bypass is off or nothing is remembered.
+ *
+ * The key cannot be invented: every stored value is encrypted under a key
+ * derived from the passcode, so a made-up key would leave the data unreadable
+ * and then overwrite it with values nothing can decrypt.
+ */
+export async function devUnlock(): Promise<boolean> {
+  if (!DEV_UNLOCK) return false;
+  const raw = await AsyncStorage.getItem(DEV_UNLOCK_KEY);
+  if (!raw) return false;
+  try {
+    const key = CryptoJS.enc.Base64.parse(raw);
+    if (key.sigBytes !== 32) return false;
+    activeKey = key;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const DATA_KEYS = [
   '@tijori_passwords',
@@ -78,6 +118,7 @@ export async function initializeVault(passcode: string): Promise<void> {
   });
   await AsyncStorage.setItem(VERIFIER_KEY, blob);
   activeKey = key;
+  await rememberDevKey(key);
 }
 
 export async function unlockVault(passcode: string): Promise<boolean> {
@@ -102,6 +143,7 @@ export async function unlockVault(passcode: string): Promise<boolean> {
   if (decryptString(parsed.v, key) !== VERIFIER_PLAIN) return false;
 
   activeKey = key;
+  await rememberDevKey(key);
   return true;
 }
 
