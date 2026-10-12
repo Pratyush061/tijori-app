@@ -6,7 +6,7 @@ import { Keypad, PasscodeDots } from './PasscodeKeypad';
 import { initializeVault } from './storage/secureStore';
 import { colors, space } from './theme';
 
-const MIN_LENGTH = 4;
+const MIN_LENGTH = 6;
 const MAX_LENGTH = 8;
 
 /**
@@ -89,7 +89,7 @@ export function PasscodeSetupScreen({ onDone }: { onDone: () => void }) {
         </Text>
         <Text style={styles.caption}>
           {step === 'create'
-            ? 'Choose 4–8 digits, then tap ✓ to continue.'
+            ? 'Choose 6–8 digits, then tap ✓ to continue.'
             : 'Enter the same digits once more, then tap ✓.'}
         </Text>
 
