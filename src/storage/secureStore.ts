@@ -7,6 +7,8 @@ import {
   decryptString,
   encryptString,
   makeSalt,
+  pbkdf2Iterations,
+  LEGACY_PBKDF2_ITERATIONS,
   type VaultKey,
 } from './crypto';
 
@@ -65,10 +67,14 @@ export async function isVaultInitialized(): Promise<boolean> {
  */
 export async function initializeVault(passcode: string): Promise<void> {
   const salt = makeSalt();
-  const key = await deriveKeyAsync(passcode, salt);
+  const iterations = pbkdf2Iterations();
+  const key = await deriveKeyAsync(passcode, salt, iterations);
   const blob = JSON.stringify({
     salt: salt.toString(CryptoJS.enc.Base64),
     v: encryptString(VERIFIER_PLAIN, key),
+    // The work factor travels with the vault, so it can be raised later
+    // without locking anyone out of a vault created with the old value.
+    iterations,
   });
   await AsyncStorage.setItem(VERIFIER_KEY, blob);
   activeKey = key;
@@ -78,7 +84,7 @@ export async function unlockVault(passcode: string): Promise<boolean> {
   const raw = await AsyncStorage.getItem(VERIFIER_KEY);
   if (!raw) return false;
 
-  let parsed: { salt?: string; v?: string };
+  let parsed: { salt?: string; v?: string; iterations?: number };
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -87,7 +93,12 @@ export async function unlockVault(passcode: string): Promise<boolean> {
   if (!parsed.salt || !parsed.v) return false;
 
   const salt = CryptoJS.enc.Base64.parse(parsed.salt);
-  const key = await deriveKeyAsync(passcode, salt);
+  // Vaults created before the work factor was stored used 150k rounds.
+  const iterations =
+    typeof parsed.iterations === 'number' && parsed.iterations > 0
+      ? parsed.iterations
+      : LEGACY_PBKDF2_ITERATIONS;
+  const key = await deriveKeyAsync(passcode, salt, iterations);
   if (decryptString(parsed.v, key) !== VERIFIER_PLAIN) return false;
 
   activeKey = key;
