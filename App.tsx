@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Platform,
   StatusBar,
@@ -30,7 +31,14 @@ import {
 } from './src/screens';
 import { NotesScreen } from './src/NotesScreen';
 import { PasscodeSetupScreen } from './src/PasscodeSetupScreen';
-import { isVaultInitialized, unlockVault, lock, getAutoLockTimeout } from './src/storage/secureStore';
+import {
+  isVaultInitialized,
+  unlockVault,
+  lock,
+  getAutoLockTimeout,
+  devUnlock,
+} from './src/storage/secureStore';
+import { DEV_UNLOCK } from './src/devFlags';
 import { colors, space } from './src/theme';
 
 const TOP_INSET =
@@ -170,6 +178,18 @@ function App() {
         // leaving the user on a blank screen.
         initialized = false;
       }
+      // Debug builds only: a previous unlock was remembered, so skip the
+      // passcode and the key derivation entirely.
+      if (DEV_UNLOCK && initialized) {
+        try {
+          if (await devUnlock()) {
+            if (alive) setPhase('unlocked');
+            return;
+          }
+        } catch {
+          // Fall through to the lock screen.
+        }
+      }
       if (alive) setPhase(initialized ? 'locked' : 'setup');
     })();
     return () => {
@@ -219,10 +239,29 @@ function App() {
     return ok;
   };
 
+  // Debug builds only. The vault key comes from the passcode, so the first
+  // unlock on a dev build still has to be typed once; after that it is
+  // remembered and this is instant.
+  const handleDevSkip = async () => {
+    if (await devUnlock()) {
+      setPhase('unlocked');
+      return;
+    }
+    Alert.alert(
+      'Nothing remembered yet',
+      'Enter your passcode once on this build and the app will skip it from then on. The key is derived from the passcode, so it cannot be recreated without it.'
+    );
+  };
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.inset} />
+      {DEV_UNLOCK ? (
+        <View style={styles.devBanner}>
+          <Text style={styles.devBannerText}>DEV BUILD — passcode bypass on</Text>
+        </View>
+      ) : null}
       {phase === 'loading' ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.gold} />
@@ -230,7 +269,19 @@ function App() {
       ) : phase === 'setup' ? (
         <PasscodeSetupScreen onDone={() => setPhase('unlocked')} />
       ) : phase === 'locked' ? (
-        <LockScreen onUnlock={handleUnlock} />
+        <View style={styles.root}>
+          <LockScreen onUnlock={handleUnlock} />
+          {DEV_UNLOCK ? (
+            <TouchableOpacity
+              style={styles.devSkip}
+              accessibilityLabel="Skip passcode (dev)"
+              accessibilityRole="button"
+              onPress={handleDevSkip}
+            >
+              <Text style={styles.devSkipText}>Skip passcode (dev)</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : showCards ? (
         <CardsScreen onBack={() => setShowCards(false)} />
       ) : showDocuments ? (
@@ -283,6 +334,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  devBanner: {
+    backgroundColor: '#B00020',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  devBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  devSkip: {
+    alignSelf: 'center',
+    marginBottom: 28,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#B00020',
+  },
+  devSkipText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   nav: {
     flexDirection: 'row',

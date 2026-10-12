@@ -340,12 +340,12 @@ export function DraggableSheet({
                     )
                   )
                 )
+              ),
+              React.createElement(
+                SheetContext.Provider,
+                { value: { scrollViewRef, scrollOffset } },
+                children
               )
-            ),
-            React.createElement(
-              SheetContext.Provider,
-              { value: { scrollViewRef, scrollOffset } },
-              children
             )
           )
         )

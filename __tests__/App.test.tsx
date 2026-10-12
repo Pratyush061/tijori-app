@@ -42,7 +42,7 @@ jest.setTimeout(15000);
 test('first passcode submit immediately advances to confirmation', async () => {
   const tree = await renderApp();
 
-  for (const digit of ['1', '2', '3', '4']) {
+  for (const digit of ['1', '2', '3', '4', '5', '6']) {
     await tap(tree, digit);
   }
   await tap(tree, '✓');
@@ -57,13 +57,13 @@ test('entering and confirming a passcode reveals the vault', async () => {
   const tree = await renderApp();
 
   // Step 1: choose a passcode and confirm it with the check key.
-  for (const digit of ['1', '2', '3', '4']) {
+  for (const digit of ['1', '2', '3', '4', '5', '6']) {
     await tap(tree, digit);
   }
   await tap(tree, '✓');
 
   // Step 2: enter it again.
-  for (const digit of ['1', '2', '3', '4']) {
+  for (const digit of ['1', '2', '3', '4', '5', '6']) {
     await tap(tree, digit);
   }
   await ReactTestRenderer.act(async () => {

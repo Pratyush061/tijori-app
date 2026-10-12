@@ -132,6 +132,10 @@ jest.mock('@10play/tentap-editor', () => {
   };
 });
 
+// react-native-quick-crypto is a native module; the unit tests exercise the
+// pure-JS PBKDF2 fallback, so the mock deliberately exposes no pbkdf2.
+jest.mock('react-native-quick-crypto', () => ({}));
+
 jest.mock('react-native-gesture-handler', () => {
   const React = require('react');
   const View = require('react-native').View;
@@ -166,12 +170,24 @@ jest.mock('react-native-gesture-handler', () => {
     Directions: {},
     GestureHandlerRootView: (props) => React.createElement(View, props, props.children),
     Gesture: {
-      Pan: jest.fn(() => ({
-        onStart: jest.fn().mockReturnThis(),
-        onChange: jest.fn().mockReturnThis(),
-        onEnd: jest.fn().mockReturnThis(),
-        onUpdate: jest.fn().mockReturnThis(),
-      }))
+      // The real API returns the gesture from every configuration call, so the
+      // mock must chain too - otherwise rendering a sheet throws on `.enabled`.
+      Pan: jest.fn(() => {
+        const builder = {};
+        [
+          'enabled',
+          'simultaneousWithExternalGesture',
+          'onStart',
+          'onChange',
+          'onEnd',
+          'onUpdate',
+          'onBegin',
+          'onFinalize',
+        ].forEach(name => {
+          builder[name] = jest.fn(() => builder);
+        });
+        return builder;
+      }),
     },
     GestureDetector: (props) => React.createElement(View, props, props.children),
   };
@@ -225,8 +241,8 @@ jest.mock('react-native-webview', () => {
   return { __esModule: true, WebView, default: WebView };
 });
 
-// The vault's key derivation is intentionally expensive (150k PBKDF2 rounds).
-// Unit tests exercise correctness, not cost, so use a small round count here;
-// production always uses the real value.
+// The vault's key derivation is intentionally expensive (600k PBKDF2 rounds in
+// production). Unit tests exercise correctness, not cost, so use a small round
+// count here; production always uses the real value.
 // eslint-disable-next-line no-undef
 globalThis.__TIJORI_PBKDF2_ITERATIONS__ = 1000;

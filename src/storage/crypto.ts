@@ -1,13 +1,21 @@
 /* eslint-disable no-bitwise */
 import CryptoJS from 'crypto-js';
+import * as QuickCrypto from 'react-native-quick-crypto';
 
 /**
  * Tijori's at-rest encryption primitives.
  *
- * The vault is protected by a passcode only (no biometrics, no native
- * keychain). A 256-bit AES key is derived from the passcode with PBKDF2, and
- * every stored value is encrypted with AES-CBC. Nothing here needs a native
- * module beyond `crypto-js`, so the Android build stays predictable.
+ * The vault is protected by a passcode only (no biometrics, no native keychain).
+ * A 256-bit AES key is derived from the passcode with PBKDF2-HMAC-SHA256, and
+ * every stored value is encrypted with AES-CBC.
+ *
+ * The derivation runs on react-native-quick-crypto's native PBKDF2 (C++ over
+ * OpenSSL) when that module is present, which is well over 100x faster than
+ * doing the same work in JavaScript - the difference between a ~20 second
+ * unlock and a sub-second one. PBKDF2 is standardised, so the native and the
+ * pure-JS paths derive byte-for-byte the same key; the JavaScript path is kept
+ * only as a fallback for environments without the native module (unit tests, or
+ * a build where it failed to load).
  */
 
 // Prefix written in front of every ciphertext so a stored value can be told
@@ -15,28 +23,70 @@ import CryptoJS from 'crypto-js';
 export const ENC_MARKER = 'tijori1:';
 
 const KEY_SIZE_WORDS = 256 / 32;
+const KEY_SIZE_BYTES = KEY_SIZE_WORDS * 4;
 const SALT_BYTES = 16;
 const IV_BYTES = 16;
 
-// PBKDF2-HMAC-SHA256 rounds. This is deliberately expensive; it is the main
-// cost of unlocking. Tests override it (see the __TIJORI_PBKDF2_ITERATIONS__
-// hook) so the suite exercises correctness without paying for it.
-const DEFAULT_PBKDF2_ITERATIONS = 150000;
+// Work factor for new vaults: the OWASP recommendation for PBKDF2-HMAC-SHA256.
+// It is stored with the vault, so a vault always unlocks with the value it was
+// created with - vaults made before this existed use LEGACY_PBKDF2_ITERATIONS.
+export const PBKDF2_ITERATIONS = 600000;
+export const LEGACY_PBKDF2_ITERATIONS = 150000;
 
-// How many rounds run between yields to the JS event loop. Yielding keeps the
-// UI (and the busy spinner) alive during the KDF; doing it rarely keeps the
-// setTimeout overhead negligible.
+// How many rounds run between yields to the JS event loop in the fallback.
 const PBKDF2_YIELD_EVERY = 25000;
 
 export type VaultKey = CryptoJS.lib.WordArray;
 
-function iterations(): number {
+type NativePbkdf2 = {
+  pbkdf2Sync: (
+    password: string,
+    salt: Uint8Array,
+    iterations: number,
+    keylen: number,
+    digest: string
+  ) => Uint8Array;
+  pbkdf2: (
+    password: string,
+    salt: Uint8Array,
+    iterations: number,
+    keylen: number,
+    digest: string,
+    callback: (err: Error | null, key: Uint8Array) => void
+  ) => void;
+};
+
+// The native module is optional: it is absent under Jest, and a build where it
+// failed to load must still be able to open the vault.
+const nativeCrypto = QuickCrypto as unknown as Partial<NativePbkdf2>;
+
+/**
+ * The work factor to use when creating a vault. Tests override it (see the
+ * __TIJORI_PBKDF2_ITERATIONS__ hook) so the suite does not pay for 600k rounds.
+ */
+export function pbkdf2Iterations(): number {
   const override = (
     globalThis as { __TIJORI_PBKDF2_ITERATIONS__?: number }
   ).__TIJORI_PBKDF2_ITERATIONS__;
   return typeof override === 'number' && override > 0
     ? override
-    : DEFAULT_PBKDF2_ITERATIONS;
+    : PBKDF2_ITERATIONS;
+}
+
+function wordArrayToBytes(wa: CryptoJS.lib.WordArray): Uint8Array {
+  const bytes = new Uint8Array(wa.sigBytes);
+  for (let i = 0; i < wa.sigBytes; i++) {
+    bytes[i] = (wa.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+  }
+  return bytes;
+}
+
+function bytesToWordArray(bytes: Uint8Array): CryptoJS.lib.WordArray {
+  const words: number[] = [];
+  for (let i = 0; i < bytes.length; i++) {
+    words[i >>> 2] = (words[i >>> 2] || 0) | (bytes[i] << (24 - (i % 4) * 8));
+  }
+  return CryptoJS.lib.WordArray.create(words, bytes.length);
 }
 
 /**
@@ -75,13 +125,35 @@ export function makeSalt(): CryptoJS.lib.WordArray {
 }
 
 /**
- * Synchronous PBKDF2. Kept for compatibility and for the test that checks the
- * async implementation produces byte-for-byte the same key.
+ * Synchronous PBKDF2. Kept for the test that checks the async implementation
+ * derives the same key; the app always derives asynchronously so the JS thread
+ * is never blocked.
  */
-export function deriveKey(passcode: string, salt: CryptoJS.lib.WordArray): VaultKey {
+export function deriveKey(
+  passcode: string,
+  salt: CryptoJS.lib.WordArray,
+  iterations: number = pbkdf2Iterations()
+): VaultKey {
+  const pbkdf2Sync = nativeCrypto.pbkdf2Sync;
+  if (typeof pbkdf2Sync === 'function') {
+    try {
+      return bytesToWordArray(
+        pbkdf2Sync(
+          passcode,
+          wordArrayToBytes(salt),
+          iterations,
+          KEY_SIZE_BYTES,
+          'sha256'
+        )
+      );
+    } catch {
+      // Fall through to the JavaScript implementation.
+    }
+  }
+
   return CryptoJS.PBKDF2(passcode, salt, {
     keySize: KEY_SIZE_WORDS,
-    iterations: iterations(),
+    iterations,
     hasher: CryptoJS.algo.SHA256,
   });
 }
@@ -91,15 +163,15 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 /**
- * PBKDF2-HMAC-SHA256 with the same parameters and byte-for-byte the same
- * output as {@link deriveKey}, but yielding to the event loop between chunks of
- * rounds so the JS thread can keep painting during the derivation.
+ * PBKDF2-HMAC-SHA256 with the same parameters and byte-for-byte the same output
+ * as {@link deriveKey}, implemented in JavaScript and yielding to the event
+ * loop between chunks of rounds so the JS thread can keep painting.
  */
-export async function deriveKeyAsync(
+async function deriveKeyInJs(
   passcode: string,
-  salt: CryptoJS.lib.WordArray
+  salt: CryptoJS.lib.WordArray,
+  total: number
 ): Promise<VaultKey> {
-  const total = iterations();
   // A fresh HMAC per PRF call is required: crypto-js's HMAC cannot be reused
   // across messages (reusing one instance silently diverges from standard
   // PBKDF2 from the third round on). Parsing the key once keeps it cheap.
@@ -134,6 +206,38 @@ export async function deriveKeyAsync(
   derivedKey.sigBytes = KEY_SIZE_WORDS * 4;
   derivedKey.clamp();
   return derivedKey;
+}
+
+/**
+ * PBKDF2-HMAC-SHA256, preferring the native implementation so the derivation
+ * runs off the JS thread. Falls back to the JavaScript implementation whenever
+ * the native module is unavailable, which produces the identical key.
+ */
+export async function deriveKeyAsync(
+  passcode: string,
+  salt: CryptoJS.lib.WordArray,
+  iterations: number = pbkdf2Iterations()
+): Promise<VaultKey> {
+  const pbkdf2 = nativeCrypto.pbkdf2;
+  if (typeof pbkdf2 === 'function') {
+    try {
+      const derived = await new Promise<Uint8Array>((resolve, reject) => {
+        pbkdf2(
+          passcode,
+          wordArrayToBytes(salt),
+          iterations,
+          KEY_SIZE_BYTES,
+          'sha256',
+          (err, key) => (err ? reject(err) : resolve(key))
+        );
+      });
+      return bytesToWordArray(derived);
+    } catch {
+      // Fall through to the JavaScript implementation.
+    }
+  }
+
+  return deriveKeyInJs(passcode, salt, iterations);
 }
 
 export function encryptString(plain: string, key: VaultKey): string {

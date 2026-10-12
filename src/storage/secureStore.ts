@@ -7,8 +7,12 @@ import {
   decryptString,
   encryptString,
   makeSalt,
+  pbkdf2Iterations,
+  LEGACY_PBKDF2_ITERATIONS,
   type VaultKey,
 } from './crypto';
+
+import { DEV_UNLOCK } from '../devFlags';
 
 /**
  * The encrypted wrapper the rest of the app reads and writes through.
@@ -21,6 +25,44 @@ import {
 
 const VERIFIER_KEY = '@tijori_verifier';
 const VERIFIER_PLAIN = 'tijori-vault-v1';
+
+/**
+ * Debug-only convenience: the key remembered from a previous unlock, so a
+ * dev-unlock build can skip the passcode. Written only while DEV_UNLOCK is on,
+ * which is never the case in a normal release build.
+ */
+const DEV_UNLOCK_KEY = '@tijori_dev_unlock';
+
+async function rememberDevKey(key: VaultKey): Promise<void> {
+  if (!DEV_UNLOCK) return;
+  try {
+    await AsyncStorage.setItem(DEV_UNLOCK_KEY, key.toString(CryptoJS.enc.Base64));
+  } catch {
+    // Best effort — failing here just means the passcode is needed next time.
+  }
+}
+
+/**
+ * Opens the vault from the remembered key, with no passcode and no key
+ * derivation. Returns false when the bypass is off or nothing is remembered.
+ *
+ * The key cannot be invented: every stored value is encrypted under a key
+ * derived from the passcode, so a made-up key would leave the data unreadable
+ * and then overwrite it with values nothing can decrypt.
+ */
+export async function devUnlock(): Promise<boolean> {
+  if (!DEV_UNLOCK) return false;
+  const raw = await AsyncStorage.getItem(DEV_UNLOCK_KEY);
+  if (!raw) return false;
+  try {
+    const key = CryptoJS.enc.Base64.parse(raw);
+    if (key.sigBytes !== 32) return false;
+    activeKey = key;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const DATA_KEYS = [
   '@tijori_passwords',
@@ -44,7 +86,7 @@ export const AUTOLOCK_KEY = '@tijori_autolock';
 
 export async function getAutoLockTimeout(): Promise<number> {
   const val = await AsyncStorage.getItem(AUTOLOCK_KEY);
-  if (val == null) return 0; // Default: Immediately (0 seconds)
+  if (val == null) return 60; // Default: 1 minute after backgrounding.
   const parsed = parseInt(val, 10);
   return isNaN(parsed) ? 0 : parsed;
 }
@@ -65,20 +107,25 @@ export async function isVaultInitialized(): Promise<boolean> {
  */
 export async function initializeVault(passcode: string): Promise<void> {
   const salt = makeSalt();
-  const key = await deriveKeyAsync(passcode, salt);
+  const iterations = pbkdf2Iterations();
+  const key = await deriveKeyAsync(passcode, salt, iterations);
   const blob = JSON.stringify({
     salt: salt.toString(CryptoJS.enc.Base64),
     v: encryptString(VERIFIER_PLAIN, key),
+    // The work factor travels with the vault, so it can be raised later
+    // without locking anyone out of a vault created with the old value.
+    iterations,
   });
   await AsyncStorage.setItem(VERIFIER_KEY, blob);
   activeKey = key;
+  await rememberDevKey(key);
 }
 
 export async function unlockVault(passcode: string): Promise<boolean> {
   const raw = await AsyncStorage.getItem(VERIFIER_KEY);
   if (!raw) return false;
 
-  let parsed: { salt?: string; v?: string };
+  let parsed: { salt?: string; v?: string; iterations?: number };
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -87,10 +134,16 @@ export async function unlockVault(passcode: string): Promise<boolean> {
   if (!parsed.salt || !parsed.v) return false;
 
   const salt = CryptoJS.enc.Base64.parse(parsed.salt);
-  const key = await deriveKeyAsync(passcode, salt);
+  // Vaults created before the work factor was stored used 150k rounds.
+  const iterations =
+    typeof parsed.iterations === 'number' && parsed.iterations > 0
+      ? parsed.iterations
+      : LEGACY_PBKDF2_ITERATIONS;
+  const key = await deriveKeyAsync(passcode, salt, iterations);
   if (decryptString(parsed.v, key) !== VERIFIER_PLAIN) return false;
 
   activeKey = key;
+  await rememberDevKey(key);
   return true;
 }
 

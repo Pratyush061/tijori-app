@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -31,6 +31,9 @@ type Props = {
 };
 
 const PALETTE = ['#111111', '#FF6B00', '#0A84FF', '#34C759', '#FF2D55', '#AF52DE'];
+
+// Word-like point sizes offered by the font-size menu.
+const FONT_SIZES_PT = ['10', '11', '12', '14', '16', '18', '24', '36'];
 
 // Notes created before the rich-text editor are plain text. Turn their line
 // breaks into <br> so they open looking the way they were written.
@@ -64,8 +67,8 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const [tint, setTint] = useState<NoteTintKey>(() => getInitialTint(entry));
   const [showPalette, setShowPalette] = useState(false);
   const [showColors, setShowColors] = useState(false);
+  const [showSizes, setShowSizes] = useState(false);
   const [activeFormats, setActiveFormats] = useState<EditorState>({});
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const editorRef = useRef<RichEditorHandle>(null);
   const titleInputRef = useRef<TextInput>(null);
@@ -85,32 +88,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   useEffect(() => {
     latestTintRef.current = tint;
   }, [tint]);
-
-  // Keyboard height listener for floating toolbar
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const s1 = Keyboard.addListener(showEvent, e => {
-      setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : 0);
-    });
-    const s2 = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    const s3 = Keyboard.addListener('keyboardDidShow', e => {
-      setKeyboardHeight(e.endCoordinates ? e.endCoordinates.height : 0);
-    });
-    const s4 = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      s1.remove();
-      s2.remove();
-      s3.remove();
-      s4.remove();
-    };
-  }, []);
 
   const isSavingRef = useRef(false);
 
@@ -203,17 +180,22 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
     }
   };
 
+  // The editor owns the format state and reports it after every command, so the
+  // toolbar is a pure view of that state — nothing here guesses. Tapping an
+  // active format turns it off; a quote or code block tapped while it is
+  // already active returns to a paragraph. Bold / italic / underline / strike
+  // are read from the real tags around the caret, so a heading can no longer
+  // read as bold.
   const run = (command: string, value?: string) => {
-    if (command === 'bold') {
-      setActiveFormats(prev => ({ ...prev, bold: !prev.bold }));
-    } else if (command === 'italic') {
-      setActiveFormats(prev => ({ ...prev, italic: !prev.italic }));
-    } else if (command === 'underline') {
-      setActiveFormats(prev => ({ ...prev, underline: !prev.underline }));
-    } else if (command === 'strikeThrough') {
-      setActiveFormats(prev => ({ ...prev, strikeThrough: !prev.strikeThrough }));
-    }
     editorRef.current?.exec(command, value);
+  };
+
+  const setBlock = (tag: string) => {
+    editorRef.current?.setBlock(tag);
+  };
+
+  const setFontSize = (pt: string) => {
+    editorRef.current?.setFontSize(pt);
   };
 
   const confirmDelete = () => {
@@ -230,7 +212,10 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const currentBg = NOTE_TINTS[tint] || NOTE_TINTS.default;
 
   return (
-    <View style={[styles.container, { backgroundColor: currentBg }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: currentBg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Clean Single-Row Header */}
       <View style={[styles.header, { backgroundColor: currentBg }]}>
         <TouchableOpacity
@@ -378,7 +363,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
 
       {/* Keyboard-Adaptive Floating Toolbar */}
       <View
-        style={[styles.toolbar, { bottom: keyboardHeight }]}
+        style={styles.toolbar}
         accessibilityLabel="Formatting Toolbar"
         testID="formatting-toolbar"
       >
@@ -425,24 +410,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
             onPress={() => run('strikeThrough')}
           />
           <Divider />
-          <ToolButton label="A-" onPress={() => run('fontSize', '2')} />
-          <ToolButton label="A+" onPress={() => run('fontSize', '5')} />
-          <ToolButton
-            label="H1"
-            isActive={activeFormats.formatBlock === 'h1'}
-            onPress={() => run('formatBlock', '<h1>')}
-          />
-          <ToolButton
-            label="H2"
-            isActive={activeFormats.formatBlock === 'h2'}
-            onPress={() => run('formatBlock', '<h2>')}
-          />
-          <ToolButton
-            label="¶"
-            isActive={activeFormats.formatBlock === 'p'}
-            onPress={() => run('formatBlock', '<p>')}
-          />
-          <Divider />
           <ToolButton
             label="•"
             isActive={!!activeFormats.insertUnorderedList}
@@ -456,12 +423,19 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           <ToolButton
             label="❝"
             isActive={activeFormats.formatBlock === 'blockquote'}
-            onPress={() => run('formatBlock', '<blockquote>')}
+            onPress={() => setBlock('blockquote')}
           />
           <ToolButton
             label="</>"
             isActive={activeFormats.formatBlock === 'pre'}
-            onPress={() => run('formatBlock', '<pre>')}
+            onPress={() => setBlock('pre')}
+          />
+          <Divider />
+          <ToolButton
+            label={activeFormats.fontSize || 'Aa'}
+            onPress={() => setShowSizes(v => !v)}
+            accessibilityLabel="Font size"
+            testID="font-size"
           />
           <Divider />
           <ToolButton
@@ -471,7 +445,36 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
         </ScrollView>
       </View>
-    </View>
+
+      {showSizes && (
+        <View style={styles.sizeMenu} accessibilityLabel="Font size list" testID="font-size-menu">
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {FONT_SIZES_PT.map(pt => (
+              <TouchableOpacity
+                key={pt}
+                onPress={() => {
+                  setFontSize(pt);
+                  setShowSizes(false);
+                }}
+                style={styles.sizeRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Font size ${pt}`}
+                testID={`size-${pt}`}
+              >
+                <Text
+                  style={[
+                    styles.sizeRowText,
+                    activeFormats.fontSize === pt ? styles.sizeRowTextActive : null,
+                  ]}
+                >
+                  {pt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -649,8 +652,31 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
   },
+  sizeMenu: {
+    position: 'absolute',
+    right: 16,
+    bottom: 60,
+    width: 92,
+    maxHeight: 260,
+    borderRadius: 12,
+    paddingVertical: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.sep,
+  },
+  sizeRow: {
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  sizeRowText: {
+    fontSize: 16,
+    color: colors.ink,
+  },
+  sizeRowTextActive: {
+    fontWeight: '700',
+    color: colors.blue,
+  },
   toolbar: {
-    position: 'relative',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.sep,
     backgroundColor: colors.bg,

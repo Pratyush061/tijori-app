@@ -1,0 +1,109 @@
+name: Dev unlock APK
+
+# A throwaway APK for debugging only. It carries a "skip the passcode" path so
+# the app can be opened without waiting on the unlock screen.
+#
+# The bypass is switched on by rewriting src/devFlags.ts to DEV_UNLOCK = true
+# for this build alone. The committed value stays `false`, and the normal
+# "Android APK" workflow never touches it, so a release APK cannot contain the
+# bypass. The app also paints a red "DEV BUILD" bar so the two are never
+# confused.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dev-apk:
+    name: Build dev-unlock APK
+    # Never on a push to main — this artefact is for debugging branches only.
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK components
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          SDKMANAGER="$(ls -1 "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools" \
+            "ndk;27.1.12297006" \
+            "cmake;3.22.1"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Turn on the passcode bypass
+        run: |
+          cat > src/devFlags.ts <<'EOF'
+          /**
+           * Build-time switches for development.
+           *
+           * DEV_UNLOCK turns on a "skip the passcode" path used only while
+           * debugging. This file is rewritten by the dev-unlock workflow; the
+           * committed version keeps it `false` so a normal release APK can
+           * never contain the bypass.
+           */
+          export const DEV_UNLOCK = true;
+          EOF
+          cat src/devFlags.ts
+
+      # A release-style build so the JS bundle is compiled in and the APK runs
+      # standalone on a phone, with no Metro dev server attached.
+      - name: Build dev-unlock APK (arm64 only)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: |
+          cd android/app/build/outputs/apk/release
+          mv app-release.apk tijori-dev-unlock.apk
+          ls -lh
+
+      - name: Upload dev-unlock APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tijori-dev-unlock-apk
+          path: android/app/build/outputs/apk/release/tijori-dev-unlock.apk
+          if-no-files-found: error
+          retention-days: 30
