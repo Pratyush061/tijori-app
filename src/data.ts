@@ -254,7 +254,41 @@ export type DocumentEntry = {
   title: string;
   type: DocumentType;
   note?: string;
+  /** Local `file://` uri of the stored attachment — a photo or an uploaded file. */
   photoPath?: string;
+  /** Original name of an uploaded file, e.g. `passport.pdf`. */
+  fileName?: string;
+  /** MIME type reported by the picker, when it knew one. */
+  mimeType?: string;
+  /** Size of the stored file in bytes, when known. */
+  sizeBytes?: number;
   color: string;
   initial: string;
 };
+
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i;
+
+/** True when a stored document is a picture we can render as a thumbnail. */
+export function isImageDocument(
+  entry: Pick<DocumentEntry, 'photoPath' | 'fileName' | 'mimeType'>
+): boolean {
+  if (!entry.photoPath) return false;
+  if (entry.mimeType) return entry.mimeType.startsWith('image/');
+  return IMAGE_EXTENSIONS.test(entry.fileName || entry.photoPath);
+}
+
+/** Short badge text for a non-image document: PDF, DOCX, XLSX … */
+export function documentBadge(entry: Pick<DocumentEntry, 'fileName' | 'photoPath'>): string {
+  const source = entry.fileName || entry.photoPath || '';
+  const dot = source.lastIndexOf('.');
+  const ext = dot >= 0 ? source.slice(dot + 1).replace(/[^a-z0-9]/gi, '').toLowerCase() : '';
+  return ext ? ext.slice(0, 4).toUpperCase() : 'FILE';
+}
+
+/** Human-readable file size, or null when it is not known. */
+export function formatFileSize(bytes?: number): string | null {
+  if (!bytes || bytes <= 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
