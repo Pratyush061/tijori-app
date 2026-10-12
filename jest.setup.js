@@ -118,6 +118,20 @@ jest.mock('react-native-image-picker', () => {
   };
 });
 
+// The document picker and viewer are native modules with no JS fallback, so the
+// tests get stubs that behave like "the user picked nothing".
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(() => Promise.resolve([])),
+  keepLocalCopy: jest.fn(() => Promise.resolve([])),
+  types: { allFiles: '*/*', images: 'image/*', pdf: 'application/pdf' },
+  isErrorWithCode: jest.fn(() => false),
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+}));
+
+jest.mock('@react-native-documents/viewer', () => ({
+  viewDocument: jest.fn(() => Promise.resolve(null)),
+}));
+
 jest.mock('@10play/tentap-editor', () => {
   const React = require('react');
   const { View } = require('react-native');
