@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { StyleSheet, TouchableOpacity } from 'react-native';
+import { StyleSheet } from 'react-native';
 import {
   WebView,
   type WebViewMessageEvent,
@@ -376,39 +376,24 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
     };
 
     return (
-      <TouchableOpacity
-        activeOpacity={1}
-        style={[styles.container, { backgroundColor }]}
-        accessibilityLabel="Canvas"
-        testID="canvas-tap-area"
-        onPress={() => {
-          webRef.current?.injectJavaScript('window.__focusEnd(); true;');
-        }}
-      >
-        <TypedWebView
-          ref={webRef}
-          originWhitelist={['*']}
-          source={source}
-          onMessage={handleMessage}
-          style={[styles.web, { backgroundColor }]}
-          containerStyle={[styles.webContainer, { backgroundColor }]}
-          keyboardDisplayRequiresUserAction={false}
-          hideKeyboardAccessoryView
-          showsVerticalScrollIndicator={false}
-          setSupportMultipleWindows={false}
-          androidLayerType="hardware"
-        />
-      </TouchableOpacity>
+      <TypedWebView
+        ref={webRef}
+        originWhitelist={['*']}
+        source={source}
+        onMessage={handleMessage}
+        style={[styles.web, { backgroundColor }]}
+        containerStyle={[styles.webContainer, { backgroundColor }]}
+        keyboardDisplayRequiresUserAction={false}
+        hideKeyboardAccessoryView
+        showsVerticalScrollIndicator={false}
+        setSupportMultipleWindows={false}
+        androidLayerType="hardware"
+      />
     );
   }
 );
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
   webContainer: {
     flex: 1,
     width: '100%',
