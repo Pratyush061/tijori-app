@@ -58,10 +58,11 @@ describe('Birthday calculations and age tracking', () => {
 });
 
 describe('Auto-lock configuration', () => {
-  it('defaults to 0 (Immediately) and allows updating timeout', async () => {
+  it('defaults to a 1 minute timeout and persists updates', async () => {
+    expect(await getAutoLockTimeout()).toBe(60);
+
     await setAutoLockTimeout(300);
-    const timeout = await getAutoLockTimeout();
-    expect(timeout).toBe(300);
+    expect(await getAutoLockTimeout()).toBe(300);
 
     await setAutoLockTimeout(0);
     expect(await getAutoLockTimeout()).toBe(0);
@@ -74,4 +75,3 @@ describe('Time-aware Greeting', () => {
     expect(['Good morning', 'Good afternoon', 'Good evening']).toContain(greeting);
   });
 });
-
