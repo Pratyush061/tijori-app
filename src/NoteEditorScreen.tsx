@@ -432,7 +432,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
           <Divider />
           <ToolButton
-            label={activeFormats.fontSize || 'Aa'}
+            label={`${activeFormats.fontSize || '13'}pt`}
             onPress={() => setShowSizes(v => !v)}
             accessibilityLabel="Font size"
             testID="font-size"

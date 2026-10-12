@@ -135,6 +135,10 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     // New paragraphs become <p>, so formatBlock reads back a real block name.
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
     var savedRange = null;
+    var lastPt = null;
+    var markerSnapshot = [];
+    var pendingBoldHeading = null;
+    var pendingBoldCaret = null;
 
     function cleanOrphanedTags() {
       var sel = window.getSelection();
@@ -142,6 +146,9 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       var emptyTags = editor.querySelectorAll('b:empty, i:empty, u:empty, s:empty, strike:empty, span:empty');
       for (var i = 0; i < emptyTags.length; i++) {
         var el = emptyTags[i];
+        // A span carrying an explicit style is not an orphan: it is a font size
+        // (or similar) waiting for the next typed word. Never strip it.
+        if (el.getAttribute && el.getAttribute('style')) continue;
         if (activeNode && (el === activeNode || el.contains(activeNode))) continue;
         if (el.parentNode) el.parentNode.removeChild(el);
       }
@@ -193,19 +200,89 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
 
     var HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 
+    function headingFromNode(node) {
+      if (node && node.nodeType === 3) node = node.parentNode;
+      while (node && node !== editor) {
+        if (HEADINGS.indexOf(node.nodeName.toLowerCase()) !== -1) return node;
+        node = node.parentNode;
+      }
+      return null;
+    }
+
+    function currentHeading() {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      var range = sel.getRangeAt(0);
+      var startHeading = headingFromNode(range.startContainer);
+      var endHeading = headingFromNode(range.endContainer);
+      return startHeading && startHeading === endHeading ? startHeading : null;
+    }
+
+    function pendingBoldForCurrentCaret(heading) {
+      var sel = window.getSelection();
+      if (!heading || pendingBoldHeading !== heading || !pendingBoldCaret ||
+          !sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+      var range = sel.getRangeAt(0);
+      return range.startContainer === pendingBoldCaret.node &&
+        range.startOffset === pendingBoldCaret.offset;
+    }
+
+    function clearPendingHeadingBold() {
+      pendingBoldHeading = null;
+      pendingBoldCaret = null;
+    }
+
+    // The browser counts h1/h2's default weight as "bold". Temporarily neutralize
+    // that block style while executing the command so Bold applies an explicit
+    // mark instead of turning the heading's visual boldness off.
+    function executeBoldInHeading(heading) {
+      var oldWeight = heading.style.getPropertyValue('font-weight');
+      var oldPriority = heading.style.getPropertyPriority('font-weight');
+      heading.style.setProperty('font-weight', 'normal', 'important');
+      document.execCommand('bold', false, null);
+      if (oldWeight) heading.style.setProperty('font-weight', oldWeight, oldPriority);
+      else heading.style.removeProperty('font-weight');
+    }
+
+    function clearResolvedPendingHeadingBold() {
+      if (!pendingBoldHeading) return;
+      var sel = window.getSelection();
+      var range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      if (!range || !range.isCollapsed || currentHeading() !== pendingBoldHeading) {
+        clearPendingHeadingBold();
+        return;
+      }
+      if (hasAny(nodeNames(), ['b', 'strong']) || !pendingBoldForCurrentCaret(pendingBoldHeading)) {
+        clearPendingHeadingBold();
+      }
+    }
+
+    function isCollapsedCaret() {
+      var sel = window.getSelection();
+      return !!sel && sel.rangeCount > 0 && sel.isCollapsed &&
+        editor.contains(sel.getRangeAt(0).commonAncestorContainer);
+    }
+
+    // queryCommandState is only meaningful for a pending typing format at a
+    // collapsed caret. For selected text, the actual formatting tags are the
+    // source of truth, not the visual weight/style of the rendered text.
+    function pendingFormatState(command) {
+      return isCollapsedCaret() && document.queryCommandState(command) === true;
+    }
+
     function isBold() {
       var names = nodeNames();
       if (hasAny(names, ['b', 'strong'])) return true;
-      // A collapsed caret can carry a pending "type bold" state, which is a
-      // real state worth showing. Headings answer true here too, but only
-      // because they render bold, so that case is excluded.
-      if (hasAny(names, HEADINGS)) return false;
-      return document.queryCommandState('bold') === true;
+      // The only "bold" state a heading may report without a real mark is a
+      // pending Bold command we explicitly issued at this caret.
+      var heading = currentHeading();
+      if (heading) return pendingBoldForCurrentCaret(heading);
+      return pendingFormatState('bold');
     }
 
     function isMarked(names, wanted, command) {
       if (hasAny(names, wanted)) return true;
-      return document.queryCommandState(command) === true;
+      return pendingFormatState(command);
     }
 
     // The browser reports the default block as 'div' (or nothing); both mean a
@@ -216,8 +293,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       return block;
     }
 
-    // Effective size at the caret, in points. 96dpi makes px -> pt a 0.75
-    // multiply, which is why 17px reads back as 13pt.
+    // Effective rendered size converted to points (CSS uses 96px per inch), so
+    // the 17px body text reads back as 13pt.
     function currentFontSize() {
       var nodes = selectionNodes();
       var el = nodes.length ? nodes[0] : editor;
@@ -322,11 +399,27 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'blur' }));
       }
     });
-    editor.addEventListener('input', function() { applyPendingSize(); push(); sendState(); ensureCursorVisible(); });
+    editor.addEventListener('input', function() {
+      applyPendingSize();
+      clearResolvedPendingHeadingBold();
+      push();
+      sendState();
+      ensureCursorVisible();
+    });
     editor.addEventListener('keyup', function() { push(); sendState(); ensureCursorVisible(); });
     editor.addEventListener('click', sendState);
 
     document.addEventListener('selectionchange', function() {
+      if (pendingBoldHeading && pendingBoldCaret) {
+        var boldSel = window.getSelection();
+        var boldRange = boldSel && boldSel.rangeCount > 0 ? boldSel.getRangeAt(0) : null;
+        var sameBoldCaret = !!boldRange && boldRange.isCollapsed &&
+          boldRange.startContainer === pendingBoldCaret.node &&
+          boldRange.startOffset === pendingBoldCaret.offset;
+        var inAppliedBoldTag = !!boldRange && boldRange.isCollapsed &&
+          currentHeading() === pendingBoldHeading && hasAny(nodeNames(), ['b', 'strong']);
+        if (!sameBoldCaret && !inAppliedBoldTag) clearPendingHeadingBold();
+      }
       rememberSelection();
       sendState();
       ensureCursorVisible();
@@ -357,7 +450,31 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
     window.__exec = function (id, command, value) {
       if (alreadyRan(id)) return;
       begin();
-      document.execCommand(command, false, value === undefined ? null : value);
+      var heading = command === 'bold' ? currentHeading() : null;
+      var names = nodeNames();
+      var sel = window.getSelection();
+      var collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+
+      if (heading && !hasAny(names, ['b', 'strong'])) {
+        var wasPendingBold = collapsed && pendingBoldForCurrentCaret(heading);
+        executeBoldInHeading(heading);
+        if (collapsed && !wasPendingBold) {
+          pendingBoldHeading = heading;
+          var pendingSel = window.getSelection();
+          if (pendingSel && pendingSel.rangeCount > 0) {
+            var pendingRange = pendingSel.getRangeAt(0);
+            pendingBoldCaret = {
+              node: pendingRange.startContainer,
+              offset: pendingRange.startOffset
+            };
+          }
+        } else {
+          clearPendingHeadingBold();
+        }
+      } else {
+        if (command === 'bold') clearPendingHeadingBold();
+        document.execCommand(command, false, value === undefined ? null : value);
+      }
       finish();
     };
 
@@ -370,27 +487,82 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       finish();
     };
 
-    // execCommand only speaks the legacy 1-7 size scale, so apply the largest
-    // as a marker and then swap the tags it produces for a real point size.
-    var pendingPt = null;
+    // execCommand's font size only speaks the legacy 1-7 scale, so size 7 is
+    // used as a temporary marker and the tags it produces are immediately
+    // rewritten as a real point size. Only markers we created are touched: an
+    // old note may already contain <font size="7"> and must not be rewritten.
+    function sizeSevenFonts() {
+      return Array.prototype.slice.call(editor.querySelectorAll('font[size="7"]'));
+    }
+
+    function replaceFontWithPointSize(font, pt) {
+      var span = document.createElement('span');
+      span.style.fontSize = pt + 'pt';
+      while (font.firstChild) span.appendChild(font.firstChild);
+      if (font.parentNode) font.parentNode.replaceChild(span, font);
+    }
+
+    // Converts the marker tags that appeared since the last snapshot. It runs
+    // straight after a size is applied AND again on every input, so words typed
+    // after choosing a size keep that size instead of being left behind as a
+    // stray legacy size-7 tag, which renders at the browser's huge default.
+    function convertNewSizeMarkers(pt) {
+      if (!pt) return 0;
+      var marked = sizeSevenFonts();
+      var converted = 0;
+      for (var i = 0; i < marked.length; i++) {
+        if (markerSnapshot.indexOf(marked[i]) !== -1) continue;
+        replaceFontWithPointSize(marked[i], pt);
+        converted++;
+      }
+      markerSnapshot = sizeSevenFonts();
+      return converted;
+    }
+
+    // A collapsed caret gets an empty sized span instead. execCommand's font
+    // size does not reliably create a tag when nothing is selected, and the
+    // documented fix is to insert the span and drop the caret inside it, so the
+    // next words typed come out at that size.
+    function insertSizeSpanAtCaret(pt) {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return false;
+      var range = sel.getRangeAt(0);
+      var span = document.createElement('span');
+      span.style.fontSize = pt + 'pt';
+      try {
+        range.insertNode(span);
+      } catch (e) {
+        return false;
+      }
+      var caret = document.createRange();
+      caret.setStart(span, 0);
+      caret.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(caret);
+      return true;
+    }
 
     function applyPendingSize() {
-      if (!pendingPt) return;
-      var marked = editor.querySelectorAll('font[size="7"]');
-      for (var i = 0; i < marked.length; i++) {
-        var span = document.createElement('span');
-        span.setAttribute('style', 'font-size:' + pendingPt + 'pt');
-        while (marked[i].firstChild) span.appendChild(marked[i].firstChild);
-        if (marked[i].parentNode) marked[i].parentNode.replaceChild(span, marked[i]);
-      }
+      convertNewSizeMarkers(lastPt);
     }
 
     window.__setFontSize = function (id, pt) {
       if (alreadyRan(id)) return;
+      var pointSize = String(parseInt(pt, 10));
+      if (['10', '11', '12', '14', '16', '18', '24', '36'].indexOf(pointSize) === -1) return;
+
       begin();
-      pendingPt = pt;
-      document.execCommand('fontSize', false, '7');
-      applyPendingSize();
+      var sel = window.getSelection();
+      var collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+
+      lastPt = pointSize;
+      markerSnapshot = sizeSevenFonts();
+      if (collapsed) {
+        insertSizeSpanAtCaret(pointSize);
+      } else {
+        document.execCommand('fontSize', false, '7');
+        convertNewSizeMarkers(pointSize);
+      }
       finish();
     };
 
