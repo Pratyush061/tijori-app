@@ -32,6 +32,9 @@ type Props = {
 
 const PALETTE = ['#111111', '#FF6B00', '#0A84FF', '#34C759', '#FF2D55', '#AF52DE'];
 
+// Font size steps offered by A- / A+, smallest to largest (execCommand sizes).
+const FONT_SIZE_STEPS = ['2', '3', '5'];
+
 // Notes created before the rich-text editor are plain text. Turn their line
 // breaks into <br> so they open looking the way they were written.
 function toEditableHTML(body: string) {
@@ -176,7 +179,19 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
     }
   };
 
+  // Every stateful format behaves like bold: the button flips at once and the
+  // editor's reported state confirms it, so tapping an active format turns it
+  // off again. A block format tapped while it is already active returns to a
+  // paragraph, and A- / A+ step along the font-size ladder.
   const run = (command: string, value?: string) => {
+    if (command === 'formatBlock') {
+      const tag = (value || 'p').replace(/[<>]/g, '');
+      const next = activeFormats.formatBlock === tag && tag !== 'p' ? 'p' : tag;
+      setActiveFormats(prev => ({ ...prev, formatBlock: next }));
+      editorRef.current?.exec('formatBlock', `<${next}>`);
+      return;
+    }
+
     if (command === 'bold') {
       setActiveFormats(prev => ({ ...prev, bold: !prev.bold }));
     } else if (command === 'italic') {
@@ -185,8 +200,23 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
       setActiveFormats(prev => ({ ...prev, underline: !prev.underline }));
     } else if (command === 'strikeThrough') {
       setActiveFormats(prev => ({ ...prev, strikeThrough: !prev.strikeThrough }));
+    } else if (command === 'insertUnorderedList') {
+      setActiveFormats(prev => ({ ...prev, insertUnorderedList: !prev.insertUnorderedList }));
+    } else if (command === 'insertOrderedList') {
+      setActiveFormats(prev => ({ ...prev, insertOrderedList: !prev.insertOrderedList }));
     }
     editorRef.current?.exec(command, value);
+  };
+
+  const stepFontSize = (delta: number) => {
+    const from = FONT_SIZE_STEPS.indexOf(activeFormats.fontSize ?? '');
+    const index = Math.min(
+      FONT_SIZE_STEPS.length - 1,
+      Math.max(0, (from === -1 ? 1 : from) + delta)
+    );
+    const next = FONT_SIZE_STEPS[index];
+    setActiveFormats(prev => ({ ...prev, fontSize: next }));
+    editorRef.current?.exec('fontSize', next);
   };
 
   const confirmDelete = () => {
@@ -401,22 +431,30 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
             onPress={() => run('strikeThrough')}
           />
           <Divider />
-          <ToolButton label="A-" onPress={() => run('fontSize', '2')} />
-          <ToolButton label="A+" onPress={() => run('fontSize', '5')} />
+          <ToolButton
+            label="A-"
+            isActive={activeFormats.fontSize === '2'}
+            onPress={() => stepFontSize(-1)}
+          />
+          <ToolButton
+            label="A+"
+            isActive={activeFormats.fontSize === '5'}
+            onPress={() => stepFontSize(1)}
+          />
           <ToolButton
             label="H1"
             isActive={activeFormats.formatBlock === 'h1'}
-            onPress={() => run('formatBlock', '<h1>')}
+            onPress={() => run('formatBlock', 'h1')}
           />
           <ToolButton
             label="H2"
             isActive={activeFormats.formatBlock === 'h2'}
-            onPress={() => run('formatBlock', '<h2>')}
+            onPress={() => run('formatBlock', 'h2')}
           />
           <ToolButton
             label="¶"
             isActive={activeFormats.formatBlock === 'p'}
-            onPress={() => run('formatBlock', '<p>')}
+            onPress={() => run('formatBlock', 'p')}
           />
           <Divider />
           <ToolButton
@@ -432,12 +470,12 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           <ToolButton
             label="❝"
             isActive={activeFormats.formatBlock === 'blockquote'}
-            onPress={() => run('formatBlock', '<blockquote>')}
+            onPress={() => run('formatBlock', 'blockquote')}
           />
           <ToolButton
             label="</>"
             isActive={activeFormats.formatBlock === 'pre'}
-            onPress={() => run('formatBlock', '<pre>')}
+            onPress={() => run('formatBlock', 'pre')}
           />
           <Divider />
           <ToolButton
