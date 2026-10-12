@@ -21,8 +21,8 @@ export type RichEditorHandle = {
   getHTML: () => string;
   getHtml: () => Promise<string> | string;
   exec: (command: string, value?: string) => void;
-  toggleBlock: (tag: string) => void;
-  stepFontSize: (delta: number) => void;
+  setBlock: (tag: string) => void;
+  setFontSize: (pt: string) => void;
   toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => void;
   focus: () => void;
   focusEnd: () => void;
@@ -160,26 +160,90 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       }
     }
 
+    // Marks are read from the real tags around the caret, NOT from
+    // queryCommandState. That call answers "does this text LOOK bold", which is
+    // true inside a heading purely because headings render bold - so it would
+    // light the B button for a heading that was never bolded.
+    function selectionNodes() {
+      var nodes = [];
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return nodes;
+      var node = sel.getRangeAt(0).startContainer;
+      if (node.nodeType === 3) node = node.parentNode;
+      while (node && node !== editor && node !== document.body) {
+        nodes.push(node);
+        node = node.parentNode;
+      }
+      return nodes;
+    }
+
+    function nodeNames() {
+      var nodes = selectionNodes();
+      var names = [];
+      for (var i = 0; i < nodes.length; i++) names.push(nodes[i].nodeName.toLowerCase());
+      return names;
+    }
+
+    function hasAny(names, wanted) {
+      for (var i = 0; i < names.length; i++) {
+        if (wanted.indexOf(names[i]) >= 0) return true;
+      }
+      return false;
+    }
+
+    var HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+
+    function isBold() {
+      var names = nodeNames();
+      if (hasAny(names, ['b', 'strong'])) return true;
+      // A collapsed caret can carry a pending "type bold" state, which is a
+      // real state worth showing. Headings answer true here too, but only
+      // because they render bold, so that case is excluded.
+      if (hasAny(names, HEADINGS)) return false;
+      return document.queryCommandState('bold') === true;
+    }
+
+    function isMarked(names, wanted, command) {
+      if (hasAny(names, wanted)) return true;
+      return document.queryCommandState(command) === true;
+    }
+
     // The browser reports the default block as 'div' (or nothing); both mean a
-    // plain paragraph, so the paragraph button lights up in either case.
+    // plain paragraph.
     function currentBlock() {
       var block = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
       if (!block || block === 'div') return 'p';
       return block;
     }
 
+    // Effective size at the caret, in points. 96dpi makes px -> pt a 0.75
+    // multiply, which is why 17px reads back as 13pt.
+    function currentFontSize() {
+      var nodes = selectionNodes();
+      var el = nodes.length ? nodes[0] : editor;
+      var px = 0;
+      try {
+        px = parseFloat(window.getComputedStyle(el).fontSize);
+        if (!px) px = parseFloat(window.getComputedStyle(editor).fontSize);
+      } catch (e) {
+        px = 0;
+      }
+      if (!px) return null;
+      return String(Math.round(px * 0.75));
+    }
+
     function sendState() {
       if (window.ReactNativeWebView) {
-        var formatBlock = currentBlock();
+        var names = nodeNames();
         var state = {
-          bold: document.queryCommandState('bold'),
-          italic: document.queryCommandState('italic'),
-          underline: document.queryCommandState('underline'),
-          strikeThrough: document.queryCommandState('strikeThrough'),
-          insertUnorderedList: document.queryCommandState('insertUnorderedList'),
-          insertOrderedList: document.queryCommandState('insertOrderedList'),
-          formatBlock: formatBlock,
-          fontSize: document.queryCommandValue('fontSize') || null
+          bold: isBold(),
+          italic: isMarked(names, ['i', 'em'], 'italic'),
+          underline: isMarked(names, ['u'], 'underline'),
+          strikeThrough: isMarked(names, ['s', 'strike', 'del'], 'strikeThrough'),
+          insertUnorderedList: document.queryCommandState('insertUnorderedList') === true,
+          insertOrderedList: document.queryCommandState('insertOrderedList') === true,
+          formatBlock: currentBlock(),
+          fontSize: currentFontSize()
         };
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'state', state: state }));
       }
@@ -258,7 +322,7 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'blur' }));
       }
     });
-    editor.addEventListener('input', function() { push(); sendState(); ensureCursorVisible(); });
+    editor.addEventListener('input', function() { applyPendingSize(); push(); sendState(); ensureCursorVisible(); });
     editor.addEventListener('keyup', function() { push(); sendState(); ensureCursorVisible(); });
     editor.addEventListener('click', sendState);
 
@@ -297,22 +361,36 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       finish();
     };
 
-    // Block formats toggle too: the same block again goes back to a paragraph.
-    window.__toggleBlock = function (id, tag) {
+    // Block formats toggle: the same block again goes back to a paragraph.
+    window.__setBlock = function (id, tag) {
       if (alreadyRan(id)) return;
       begin();
-      var next = currentBlock() === tag && tag !== 'p' ? 'p' : tag;
+      var next = currentBlock() === tag ? 'p' : tag;
       document.execCommand('formatBlock', false, '<' + next + '>');
       finish();
     };
 
-    window.__stepFontSize = function (id, delta) {
+    // execCommand only speaks the legacy 1-7 size scale, so apply the largest
+    // as a marker and then swap the tags it produces for a real point size.
+    var pendingPt = null;
+
+    function applyPendingSize() {
+      if (!pendingPt) return;
+      var marked = editor.querySelectorAll('font[size="7"]');
+      for (var i = 0; i < marked.length; i++) {
+        var span = document.createElement('span');
+        span.setAttribute('style', 'font-size:' + pendingPt + 'pt');
+        while (marked[i].firstChild) span.appendChild(marked[i].firstChild);
+        if (marked[i].parentNode) marked[i].parentNode.replaceChild(span, marked[i]);
+      }
+    }
+
+    window.__setFontSize = function (id, pt) {
       if (alreadyRan(id)) return;
       begin();
-      var steps = ['2', '3', '5'];
-      var from = steps.indexOf(document.queryCommandValue('fontSize') || '3');
-      var index = Math.min(steps.length - 1, Math.max(0, (from === -1 ? 1 : from) + delta));
-      document.execCommand('fontSize', false, steps[index]);
+      pendingPt = pt;
+      document.execCommand('fontSize', false, '7');
+      applyPendingSize();
       finish();
     };
 
@@ -377,14 +455,14 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
         )}, ${value === undefined ? 'undefined' : JSON.stringify(value)}); true;`;
         webRef.current?.injectJavaScript(payload);
       },
-      toggleBlock: (tag: string) => {
+      setBlock: (tag: string) => {
         webRef.current?.injectJavaScript(
-          `window.__toggleBlock(${JSON.stringify(nextCommandId())}, ${JSON.stringify(tag)}); true;`
+          `window.__setBlock(${JSON.stringify(nextCommandId())}, ${JSON.stringify(tag)}); true;`
         );
       },
-      stepFontSize: (delta: number) => {
+      setFontSize: (pt: string) => {
         webRef.current?.injectJavaScript(
-          `window.__stepFontSize(${JSON.stringify(nextCommandId())}, ${JSON.stringify(delta)}); true;`
+          `window.__setFontSize(${JSON.stringify(nextCommandId())}, ${JSON.stringify(pt)}); true;`
         );
       },
       toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
