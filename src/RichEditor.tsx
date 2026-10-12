@@ -33,6 +33,7 @@ export type EditorState = {
   insertUnorderedList?: boolean;
   insertOrderedList?: boolean;
   formatBlock?: string | null;
+  fontSize?: string | null;
 };
 
 export type FormatStates = {
@@ -165,7 +166,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
           strikeThrough: document.queryCommandState('strikeThrough'),
           insertUnorderedList: document.queryCommandState('insertUnorderedList'),
           insertOrderedList: document.queryCommandState('insertOrderedList'),
-          formatBlock: formatBlock
+          formatBlock: formatBlock,
+          fontSize: document.queryCommandValue('fontSize') || null
         };
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'state', state: state }));
       }
