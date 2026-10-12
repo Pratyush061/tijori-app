@@ -14,10 +14,15 @@ const TypedWebView = WebView as unknown as React.ComponentType<
   WebViewProps & { ref?: React.Ref<WebViewHandle> }
 >;
 
+let commandSeq = 0;
+const nextCommandId = () => `${Date.now()}-${++commandSeq}`;
+
 export type RichEditorHandle = {
   getHTML: () => string;
   getHtml: () => Promise<string> | string;
   exec: (command: string, value?: string) => void;
+  toggleBlock: (tag: string) => void;
+  stepFontSize: (delta: number) => void;
   toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => void;
   focus: () => void;
   focusEnd: () => void;
@@ -127,6 +132,8 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
   (function () {
     var editor = document.getElementById('editor');
     window.__editor = editor;
+    // New paragraphs become <p>, so formatBlock reads back a real block name.
+    try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
     var savedRange = null;
 
     function cleanOrphanedTags() {
@@ -153,12 +160,17 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       }
     }
 
+    // The browser reports the default block as 'div' (or nothing); both mean a
+    // plain paragraph, so the paragraph button lights up in either case.
+    function currentBlock() {
+      var block = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
+      if (!block || block === 'div') return 'p';
+      return block;
+    }
+
     function sendState() {
       if (window.ReactNativeWebView) {
-        var formatBlock = document.queryCommandValue('formatBlock');
-        if (formatBlock) {
-          formatBlock = formatBlock.toLowerCase();
-        }
+        var formatBlock = currentBlock();
         var state = {
           bold: document.queryCommandState('bold'),
           italic: document.queryCommandState('italic'),
@@ -256,15 +268,52 @@ function buildDocument(initialHTML: string, accent: string, backgroundColor: str
       ensureCursorVisible();
     });
 
-    window.__exec = function (command, value) {
+    // Android on the New Architecture can deliver an injected script twice,
+    // which would toggle a format straight back off. Ignore a repeated id.
+    var lastCommandId = null;
+    function alreadyRan(id) {
+      if (id === lastCommandId) return true;
+      lastCommandId = id;
+      return false;
+    }
+
+    // Put the caret back where it was, apply the change, then report the truth.
+    function begin() {
       editor.focus();
       restoreSelection();
       document.execCommand('styleWithCSS', false, false);
-      document.execCommand(command, false, value === undefined ? null : value);
+    }
+    function finish() {
       rememberSelection();
       push();
       sendState();
       ensureCursorVisible();
+    }
+
+    window.__exec = function (id, command, value) {
+      if (alreadyRan(id)) return;
+      begin();
+      document.execCommand(command, false, value === undefined ? null : value);
+      finish();
+    };
+
+    // Block formats toggle too: the same block again goes back to a paragraph.
+    window.__toggleBlock = function (id, tag) {
+      if (alreadyRan(id)) return;
+      begin();
+      var next = currentBlock() === tag && tag !== 'p' ? 'p' : tag;
+      document.execCommand('formatBlock', false, '<' + next + '>');
+      finish();
+    };
+
+    window.__stepFontSize = function (id, delta) {
+      if (alreadyRan(id)) return;
+      begin();
+      var steps = ['2', '3', '5'];
+      var from = steps.indexOf(document.queryCommandValue('fontSize') || '3');
+      var index = Math.min(steps.length - 1, Math.max(0, (from === -1 ? 1 : from) + delta));
+      document.execCommand('fontSize', false, steps[index]);
+      finish();
     };
 
     window.__getHTML = function() { return getCleanHTML(); };
@@ -311,8 +360,8 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
     const sanitizeHtml = (html: string) => {
       if (!html) return '';
       return html
-        .replace(/<([b|i|u|s]|strike)>\s*<\/\1>/gi, '')
-        .replace(/<span\s*[^>]*>\s*<\/span>/gi, '');
+        .replace(/<([b|i|u|s]|strike)>\\s*<\\/\\1>/gi, '')
+        .replace(/<span\\s*[^>]*>\\s*<\\/span>/gi, '');
     };
 
     useImperativeHandle(ref, () => ({
@@ -323,13 +372,25 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
           webRef.current?.injectJavaScript('window.__focusEnd(); true;');
           return;
         }
-        const payload = `window.__exec(${JSON.stringify(command)}, ${
-          value === undefined ? 'undefined' : JSON.stringify(value)
-        }); true;`;
+        const payload = `window.__exec(${JSON.stringify(nextCommandId())}, ${JSON.stringify(
+          command
+        )}, ${value === undefined ? 'undefined' : JSON.stringify(value)}); true;`;
         webRef.current?.injectJavaScript(payload);
       },
+      toggleBlock: (tag: string) => {
+        webRef.current?.injectJavaScript(
+          `window.__toggleBlock(${JSON.stringify(nextCommandId())}, ${JSON.stringify(tag)}); true;`
+        );
+      },
+      stepFontSize: (delta: number) => {
+        webRef.current?.injectJavaScript(
+          `window.__stepFontSize(${JSON.stringify(nextCommandId())}, ${JSON.stringify(delta)}); true;`
+        );
+      },
       toggleFormat: (format: 'bold' | 'italic' | 'underline' | 'strikeThrough') => {
-        const payload = `window.__exec(${JSON.stringify(format)}); true;`;
+        const payload = `window.__exec(${JSON.stringify(nextCommandId())}, ${JSON.stringify(
+          format
+        )}); true;`;
         webRef.current?.injectJavaScript(payload);
       },
       focus: () => {
