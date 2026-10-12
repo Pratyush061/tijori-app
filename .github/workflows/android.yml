@@ -64,8 +64,11 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      # `npm install` rather than `npm ci`: package-lock.json is regenerated on
+      # install so a dependency bump does not fail the build before the lockfile
+      # has been committed.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
