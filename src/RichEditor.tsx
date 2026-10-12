@@ -360,8 +360,8 @@ export const RichEditor = forwardRef<RichEditorHandle, Props>(
     const sanitizeHtml = (html: string) => {
       if (!html) return '';
       return html
-        .replace(/<([b|i|u|s]|strike)>\\s*<\\/\\1>/gi, '')
-        .replace(/<span\\s*[^>]*>\\s*<\\/span>/gi, '');
+        .replace(/<([b|i|u|s]|strike)>\s*<\/\1>/gi, '')
+        .replace(/<span\s*[^>]*>\s*<\/span>/gi, '');
     };
 
     useImperativeHandle(ref, () => ({
