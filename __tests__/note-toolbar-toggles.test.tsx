@@ -174,14 +174,28 @@ describe('Notes toolbar toggles', () => {
     expect(html).not.toContain('return document.queryCommandState(command) === true;');
   });
 
-  it('converts only newly-created size markers and clears stale pending sizes', () => {
+  it('rewrites only the size markers it creates, and keeps converting later ones', () => {
     const tree = createTree(<RichEditor initialHTML={'<font size="7">Old large text</font>'} />);
     const html = editorDocument(tree);
 
-    expect(html).toContain('function convertNewSizeMarkers(pt, previouslyPresent)');
-    expect(html).toContain('if (previouslyPresent.indexOf(marked[i]) !== -1) continue;');
-    expect(html).toContain('function clearPendingFontSize()');
-    expect(html).toContain('if (convertNewSizeMarkers(pendingPt, pendingSizeExistingFonts) > 0)');
+    // Only markers that appeared after the snapshot are rewritten, so a size-7
+    // tag already sitting in an old note is left alone.
+    expect(html).toContain('function convertNewSizeMarkers(pt)');
+    expect(html).toContain('if (markerSnapshot.indexOf(marked[i]) !== -1) continue;');
+    expect(html).toContain('markerSnapshot = sizeSevenFonts();');
+
+    // The pending size must survive the first conversion: words typed after a
+    // size is chosen are converted too, instead of being left as stray tags.
+    expect(html).toContain('convertNewSizeMarkers(lastPt);');
+    expect(html).not.toContain('function clearPendingFontSize()');
+    expect(html).not.toContain('pendingSizeCaret');
+
+    // A collapsed caret gets an empty sized span with the caret inside it.
+    expect(html).toContain('function insertSizeSpanAtCaret(pt)');
+    expect(html).toContain('caret.setStart(span, 0);');
+
+    // Styled spans are never treated as orphans, so that span survives a save.
+    expect(html).toContain("if (el.getAttribute && el.getAttribute('style')) continue;");
     expect(html).not.toContain(
       'var marked = editor.querySelectorAll(\'font[size="7"]\');\n      for (var i = 0; i < marked.length; i++)'
     );
