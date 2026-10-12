@@ -1,9 +1,9 @@
 /**
  * The notes toolbar is a pure view of the editor's reported state: it never
- * flips a button on its own. Tapping a format asks the editor to apply it, and
- * the highlight follows whatever state the editor sends back — so tapping an
- * active format turns it off again, several formats can be on at once, and only
- * one block format (heading / paragraph / quote / code) is ever lit.
+ * flips a button on its own. Bold / italic / underline / strike are read by the
+ * editor from the real tags around the caret, so a heading can no longer light
+ * the B button, and there are no H1 / H2 / ¶ buttons any more — sizes come from
+ * the point-size menu instead.
  */
 
 import React from 'react';
@@ -30,6 +30,10 @@ function findByLabel(tree: ReactTestRenderer.ReactTestRenderer, label: string) {
   )[0];
 }
 
+function findByTestID(tree: ReactTestRenderer.ReactTestRenderer, id: string) {
+  return tree.root.findAll(node => !!node.props && node.props.testID === id)[0];
+}
+
 function backgroundOf(node: ReturnType<typeof findByLabel>): unknown {
   if (!node) return undefined;
   const style = Array.isArray(node.props.style)
@@ -51,22 +55,27 @@ function report(tree: ReactTestRenderer.ReactTestRenderer, state: Record<string,
   });
 }
 
+function mount() {
+  return createTree(
+    <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
+  );
+}
+
 describe('Notes toolbar toggles', () => {
-  it('lights a button only when the editor reports that format as active', () => {
-    const tree = createTree(
-      <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
-    );
+  it('lights B only when the editor reports real bold', () => {
+    const tree = mount();
 
     expect(backgroundOf(findByLabel(tree, 'Format B'))).not.toBe(colors.ink);
 
-    report(tree, { bold: true, formatBlock: 'p' });
+    report(tree, { bold: true });
     expect(backgroundOf(findByLabel(tree, 'Format B'))).toBe(colors.ink);
+
+    report(tree, { bold: false });
+    expect(backgroundOf(findByLabel(tree, 'Format B'))).not.toBe(colors.ink);
   });
 
-  it('lets several formats be active at the same time', () => {
-    const tree = createTree(
-      <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
-    );
+  it('lets several marks be active at the same time', () => {
+    const tree = mount();
 
     report(tree, { bold: true, italic: true, underline: true, strikeThrough: true });
     ['Format B', 'Format I', 'Format U', 'Format S'].forEach(label => {
@@ -75,38 +84,57 @@ describe('Notes toolbar toggles', () => {
   });
 
   it('does not flip a button on its own — the editor decides', () => {
-    const tree = createTree(
-      <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
-    );
+    const tree = mount();
 
     tap(tree, 'Format B');
     // Nothing was reported back, so the button must stay unlit.
     expect(backgroundOf(findByLabel(tree, 'Format B'))).not.toBe(colors.ink);
   });
 
-  it('clears a block format when the same button is tapped again', () => {
-    const tree = createTree(
-      <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
-    );
+  it('lights the list buttons from the reported state', () => {
+    const tree = mount();
 
-    report(tree, { formatBlock: 'h1' });
-    expect(backgroundOf(findByLabel(tree, 'Format H1'))).toBe(colors.ink);
-    expect(backgroundOf(findByLabel(tree, 'Format ¶'))).not.toBe(colors.ink);
-
-    // After the second tap the editor reports the block back as a paragraph.
-    report(tree, { formatBlock: 'p' });
-    expect(backgroundOf(findByLabel(tree, 'Format ¶'))).toBe(colors.ink);
-    expect(backgroundOf(findByLabel(tree, 'Format H1'))).not.toBe(colors.ink);
+    report(tree, { insertUnorderedList: true });
+    expect(backgroundOf(findByLabel(tree, 'Format •'))).toBe(colors.ink);
+    expect(backgroundOf(findByLabel(tree, 'Format 1.'))).not.toBe(colors.ink);
   });
 
-  it('keeps only one block format lit at a time', () => {
-    const tree = createTree(
-      <NoteEditorScreen entry={null} onClose={jest.fn()} onSave={jest.fn()} />
-    );
+  it('lights quote and code only for the block the editor reports', () => {
+    const tree = mount();
 
-    report(tree, { formatBlock: 'h2' });
-    expect(backgroundOf(findByLabel(tree, 'Format H2'))).toBe(colors.ink);
-    expect(backgroundOf(findByLabel(tree, 'Format H1'))).not.toBe(colors.ink);
-    expect(backgroundOf(findByLabel(tree, 'Format ¶'))).not.toBe(colors.ink);
+    report(tree, { formatBlock: 'blockquote' });
+    expect(backgroundOf(findByLabel(tree, 'Format ❝'))).toBe(colors.ink);
+    expect(backgroundOf(findByLabel(tree, 'Format </>'))).not.toBe(colors.ink);
+
+    report(tree, { formatBlock: 'pre' });
+    expect(backgroundOf(findByLabel(tree, 'Format </>'))).toBe(colors.ink);
+    expect(backgroundOf(findByLabel(tree, 'Format ❝'))).not.toBe(colors.ink);
+
+    // Tapping the lit one again returns the text to a paragraph.
+    report(tree, { formatBlock: 'p' });
+    expect(backgroundOf(findByLabel(tree, 'Format ❝'))).not.toBe(colors.ink);
+    expect(backgroundOf(findByLabel(tree, 'Format </>'))).not.toBe(colors.ink);
+  });
+
+  it('no longer offers H1, H2 or paragraph buttons', () => {
+    const tree = mount();
+
+    ['Format H1', 'Format H2', 'Format ¶'].forEach(label => {
+      expect(findByLabel(tree, label)).toBeUndefined();
+    });
+  });
+
+  it('opens the point-size menu from the size button and applies a size', () => {
+    const tree = mount();
+
+    expect(findByTestID(tree, 'font-size-menu')).toBeUndefined();
+
+    tap(tree, 'Font size');
+    expect(findByTestID(tree, 'font-size-menu')).toBeDefined();
+    expect(findByTestID(tree, 'size-16')).toBeDefined();
+    expect(findByTestID(tree, 'size-36')).toBeDefined();
+
+    tap(tree, 'Font size 16');
+    expect(findByTestID(tree, 'font-size-menu')).toBeUndefined();
   });
 });
