@@ -32,6 +32,9 @@ type Props = {
 
 const PALETTE = ['#111111', '#FF6B00', '#0A84FF', '#34C759', '#FF2D55', '#AF52DE'];
 
+// Word-like point sizes offered by the font-size menu.
+const FONT_SIZES_PT = ['10', '11', '12', '14', '16', '18', '24', '36'];
+
 // Notes created before the rich-text editor are plain text. Turn their line
 // breaks into <br> so they open looking the way they were written.
 function toEditableHTML(body: string) {
@@ -64,6 +67,7 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
   const [tint, setTint] = useState<NoteTintKey>(() => getInitialTint(entry));
   const [showPalette, setShowPalette] = useState(false);
   const [showColors, setShowColors] = useState(false);
+  const [showSizes, setShowSizes] = useState(false);
   const [activeFormats, setActiveFormats] = useState<EditorState>({});
 
   const editorRef = useRef<RichEditorHandle>(null);
@@ -178,20 +182,20 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
 
   // The editor owns the format state and reports it after every command, so the
   // toolbar is a pure view of that state — nothing here guesses. Tapping an
-  // active format turns it off; a heading, quote or code block tapped while it
-  // is already active returns to a paragraph; A- / A+ step along the size
-  // ladder. Because block formats all read from one "current block" value, only
-  // one of H1 / H2 / ¶ / ❝ / </> can ever be lit at a time.
+  // active format turns it off; a quote or code block tapped while it is
+  // already active returns to a paragraph. Bold / italic / underline / strike
+  // are read from the real tags around the caret, so a heading can no longer
+  // read as bold.
   const run = (command: string, value?: string) => {
     editorRef.current?.exec(command, value);
   };
 
-  const toggleBlock = (tag: string) => {
-    editorRef.current?.toggleBlock(tag);
+  const setBlock = (tag: string) => {
+    editorRef.current?.setBlock(tag);
   };
 
-  const stepFontSize = (delta: number) => {
-    editorRef.current?.stepFontSize(delta);
+  const setFontSize = (pt: string) => {
+    editorRef.current?.setFontSize(pt);
   };
 
   const confirmDelete = () => {
@@ -407,32 +411,6 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
           <Divider />
           <ToolButton
-            label="A-"
-            isActive={activeFormats.fontSize === '2'}
-            onPress={() => stepFontSize(-1)}
-          />
-          <ToolButton
-            label="A+"
-            isActive={activeFormats.fontSize === '5'}
-            onPress={() => stepFontSize(1)}
-          />
-          <ToolButton
-            label="H1"
-            isActive={activeFormats.formatBlock === 'h1'}
-            onPress={() => toggleBlock('h1')}
-          />
-          <ToolButton
-            label="H2"
-            isActive={activeFormats.formatBlock === 'h2'}
-            onPress={() => toggleBlock('h2')}
-          />
-          <ToolButton
-            label="¶"
-            isActive={activeFormats.formatBlock === 'p'}
-            onPress={() => toggleBlock('p')}
-          />
-          <Divider />
-          <ToolButton
             label="•"
             isActive={!!activeFormats.insertUnorderedList}
             onPress={() => run('insertUnorderedList')}
@@ -445,12 +423,19 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           <ToolButton
             label="❝"
             isActive={activeFormats.formatBlock === 'blockquote'}
-            onPress={() => toggleBlock('blockquote')}
+            onPress={() => setBlock('blockquote')}
           />
           <ToolButton
             label="</>"
             isActive={activeFormats.formatBlock === 'pre'}
-            onPress={() => toggleBlock('pre')}
+            onPress={() => setBlock('pre')}
+          />
+          <Divider />
+          <ToolButton
+            label={activeFormats.fontSize || 'Aa'}
+            onPress={() => setShowSizes(v => !v)}
+            accessibilityLabel="Font size"
+            testID="font-size"
           />
           <Divider />
           <ToolButton
@@ -460,6 +445,35 @@ export function NoteEditorScreen({ entry, onClose, onSave, onDelete }: Props) {
           />
         </ScrollView>
       </View>
+
+      {showSizes && (
+        <View style={styles.sizeMenu} accessibilityLabel="Font size list" testID="font-size-menu">
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {FONT_SIZES_PT.map(pt => (
+              <TouchableOpacity
+                key={pt}
+                onPress={() => {
+                  setFontSize(pt);
+                  setShowSizes(false);
+                }}
+                style={styles.sizeRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Font size ${pt}`}
+                testID={`size-${pt}`}
+              >
+                <Text
+                  style={[
+                    styles.sizeRowText,
+                    activeFormats.fontSize === pt ? styles.sizeRowTextActive : null,
+                  ]}
+                >
+                  {pt}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -637,6 +651,30 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
+  },
+  sizeMenu: {
+    position: 'absolute',
+    right: 16,
+    bottom: 60,
+    width: 92,
+    maxHeight: 260,
+    borderRadius: 12,
+    paddingVertical: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.sep,
+  },
+  sizeRow: {
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  sizeRowText: {
+    fontSize: 16,
+    color: colors.ink,
+  },
+  sizeRowTextActive: {
+    fontWeight: '700',
+    color: colors.blue,
   },
   toolbar: {
     borderTopWidth: StyleSheet.hairlineWidth,
