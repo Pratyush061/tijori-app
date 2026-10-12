@@ -44,7 +44,7 @@ export const AUTOLOCK_KEY = '@tijori_autolock';
 
 export async function getAutoLockTimeout(): Promise<number> {
   const val = await AsyncStorage.getItem(AUTOLOCK_KEY);
-  if (val == null) return 0; // Default: Immediately (0 seconds)
+  if (val == null) return 60; // Default: 1 minute after backgrounding.
   const parsed = parseInt(val, 10);
   return isNaN(parsed) ? 0 : parsed;
 }
